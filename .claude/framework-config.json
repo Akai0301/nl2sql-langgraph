@@ -1,0 +1,68 @@
+{
+  "framework": {
+    "description": "框架模块配置 - 这些模块是框架的一部分，不参与业务进度统计",
+    "backend": {
+      "modules": [
+        "config",
+        "middlewares",
+        "exceptions",
+        "utils",
+        "sub_applications"
+      ],
+      "systemModules": [
+        "module_admin",
+        "module_generator",
+        "module_task"
+      ],
+      "description": "后端框架模块，包含配置、中间件、异常处理、工具类、系统管理、代码生成器、定时任务等"
+    },
+    "systemFeatures": [
+      "用户管理",
+      "角色管理",
+      "菜单管理",
+      "部门管理",
+      "岗位管理",
+      "字典管理",
+      "参数配置",
+      "通知公告",
+      "操作日志",
+      "登录日志",
+      "在线用户",
+      "定时任务",
+      "代码生成器"
+    ]
+  },
+  "business": {
+    "description": "业务模块配置 - 这些是需要统计进度的业务代码",
+    "backend": {
+      "modulePattern": "module_*",
+      "excludeModules": [
+        "module_admin",
+        "module_generator",
+        "module_task"
+      ],
+      "description": "业务模块位于项目根目录下，以 module_ 开头但不包括框架自带模块（admin、generator、task）"
+    }
+  },
+  "scanRules": {
+    "backend": {
+      "requiredFiles": [
+        "DO (entity/do/*_do.py)",
+        "VO (entity/vo/*_vo.py)",
+        "Controller (*_controller.py)",
+        "Service (*_service.py)",
+        "DAO (*_dao.py)"
+      ],
+      "completenessFormula": "存在文件数 / 5 * 100%"
+    },
+    "todoPatterns": [
+      "# TODO:",
+      "# FIXME:",
+      "# XXX:",
+      "# HACK:",
+      "# NOTE:"
+    ]
+  },
+  "version": "1.0.0",
+  "lastUpdated": "2026-02-24"
+}

@@ -1,0 +1,32 @@
+{
+
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:platform.openai.com)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(py:*)",
+      "Bash(node:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git mv:*)",
+      "WebFetch(domain:opencode.ai)",
+      "Bash(opencode:*)",
+      "Bash(xargs grep:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(do grep:*)",
+      "Bash(npx vite:*)",
+      "Bash(test:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(netstat:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(npx eslint:*)",
+      "Bash(wc:*)"
+    ]
+  }
+}

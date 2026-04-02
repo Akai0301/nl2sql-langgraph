@@ -1,0 +1,47 @@
+{"display":"你好","pastedContents":{},"timestamp":1773296010870,"project":"D:\\自动评测系统-python2","sessionId":"3e5d286e-3dfb-4051-acd0-3cac2742e2c6"}
+{"display":"/status","pastedContents":{},"timestamp":1773296026092,"project":"D:\\自动评测系统-python2","sessionId":"3e5d286e-3dfb-4051-acd0-3cac2742e2c6"}
+{"display":"/model","pastedContents":{},"timestamp":1773296069148,"project":"D:\\自动评测系统-python2","sessionId":"3e5d286e-3dfb-4051-acd0-3cac2742e2c6"}
+{"display":"/model","pastedContents":{},"timestamp":1773296188104,"project":"D:\\自动评测系统-python2","sessionId":"185a49a5-66ef-4ded-a647-c453cfe0a55d"}
+{"display":"/usage","pastedContents":{},"timestamp":1773296523965,"project":"D:\\自动评测系统-python2","sessionId":"185a49a5-66ef-4ded-a647-c453cfe0a55d"}
+{"display":"/mcp","pastedContents":{},"timestamp":1773296542099,"project":"D:\\自动评测系统-python2","sessionId":"185a49a5-66ef-4ded-a647-c453cfe0a55d"}
+{"display":"/stats","pastedContents":{},"timestamp":1773296562062,"project":"D:\\自动评测系统-python2","sessionId":"185a49a5-66ef-4ded-a647-c453cfe0a55d"}
+{"display":"/help","pastedContents":{},"timestamp":1773306819287,"project":"D:\\software\\my-project","sessionId":"f1df9707-1f12-47de-8e4c-babb2f132aab"}
+{"display":"/install-global","pastedContents":{},"timestamp":1773306953525,"project":"D:\\software\\my-project","sessionId":"b7504e72-487f-44b1-b5c6-ca0e03b95d97"}
+{"display":"分析这个代码仓，据说这个仓可以帮我配置一个很好用的claude code，告诉我怎么配置以及它可以帮我实现什么功能","pastedContents":{},"timestamp":1773307162514,"project":"D:\\software\\my-project","sessionId":"f1df9707-1f12-47de-8e4c-babb2f132aab"}
+{"display":"/convert-project-to-starter-kit D:\\自动评测系统-python2\\evaluation-system-2","pastedContents":{},"timestamp":1773307353905,"project":"D:\\software\\my-project","sessionId":"b7504e72-487f-44b1-b5c6-ca0e03b95d97"}
+{"display":"上述功能是怎么实现的？是写了什么配置文件吗？","pastedContents":{},"timestamp":1773307491001,"project":"D:\\software\\my-project","sessionId":"f1df9707-1f12-47de-8e4c-babb2f132aab"}
+{"display":"我是想问这些功能这个脚手架的开发者是怎么实现的，是自己写了什么skill或者提示词吗","pastedContents":{},"timestamp":1773307576614,"project":"D:\\software\\my-project","sessionId":"f1df9707-1f12-47de-8e4c-babb2f132aab"}
+{"display":"帮我分析下这个项目，包括目录树这些","pastedContents":{},"timestamp":1773321241233,"project":"D:\\software\\codeAI\\codeai","sessionId":"5e688202-d660-4e0f-90ac-eb224f478bea"}
+{"display":".codex中的skills怎么有51个，比.claude中的要多啊","pastedContents":{},"timestamp":1773321506825,"project":"D:\\software\\codeAI\\codeai","sessionId":"5e688202-d660-4e0f-90ac-eb224f478bea"}
+{"display":"那这两个文件夹中的skills的内容有区别吗","pastedContents":{},"timestamp":1773322025790,"project":"D:\\software\\codeAI\\codeai","sessionId":"5e688202-d660-4e0f-90ac-eb224f478bea"}
+{"display":"/clear","pastedContents":{},"timestamp":1773322541401,"project":"D:\\software\\codeAI\\codeai","sessionId":"5e688202-d660-4e0f-90ac-eb224f478bea"}
+{"display":"/clear","pastedContents":{},"timestamp":1773322550230,"project":"D:\\software\\codeAI\\codeai","sessionId":"d52b426b-93bd-4824-b736-74c1cb27ada3"}
+{"display":"这个项目要怎么部署起来","pastedContents":{},"timestamp":1773322562308,"project":"D:\\software\\codeAI\\codeai","sessionId":"f0eee270-c149-478f-86c1-fb2be78a98ca"}
+{"display":"这个项目会收集我的数据然后上传吗","pastedContents":{},"timestamp":1773322686946,"project":"D:\\software\\codeAI\\codeai","sessionId":"0af017d0-a1a0-44c4-ade8-779a2dad00ca"}
+{"display":"我现在安装了python3.8，我要怎样在一个新的项目里建立python3.10的虚拟环境呢","pastedContents":{},"timestamp":1773322998829,"project":"D:\\myproject","sessionId":"d8cb4f9e-543b-4f8a-90f9-596950f287f3"}
+{"display":"我现在安装了python3.8，我要怎样在一个新的项目里建立python3.10的虚拟环境呢","pastedContents":{},"timestamp":1773323107829,"project":"D:\\myproject","sessionId":"d8cb4f9e-543b-4f8a-90f9-596950f287f3"}
+{"display":"也把python3.10的路径加入环境变量的话，3.8和3.10不会冲突吗","pastedContents":{},"timestamp":1773323172698,"project":"D:\\myproject","sessionId":"d8cb4f9e-543b-4f8a-90f9-596950f287f3"}
+{"display":"帮我下载并安装","pastedContents":{},"timestamp":1773323213375,"project":"D:\\myproject","sessionId":"d8cb4f9e-543b-4f8a-90f9-596950f287f3"}
+{"display":"/memory","pastedContents":{},"timestamp":1773323571625,"project":"D:\\myproject","sessionId":"147f32e9-8cc2-41d3-b149-26350fb6f60c"}
+{"display":"我现在电脑上有python3.8和3.10，要怎么在项目里建立3.10的虚拟环境","pastedContents":{},"timestamp":1773323663337,"project":"D:\\myproject","sessionId":"147f32e9-8cc2-41d3-b149-26350fb6f60c"}
+{"display":"/copy","pastedContents":{},"timestamp":1773324412898,"project":"D:\\software\\codeAI\\codeai","sessionId":"f0eee270-c149-478f-86c1-fb2be78a98ca"}
+{"display":"redis怎么安装","pastedContents":{},"timestamp":1773324523513,"project":"D:\\myproject","sessionId":"147f32e9-8cc2-41d3-b149-26350fb6f60c"}
+{"display":"windows怎么装redis","pastedContents":{},"timestamp":1773324576490,"project":"D:\\myproject","sessionId":"147f32e9-8cc2-41d3-b149-26350fb6f60c"}
+{"display":"其它几个sql不用执行吗","pastedContents":{},"timestamp":1773325072017,"project":"D:\\software\\codeAI\\codeai","sessionId":"f0eee270-c149-478f-86c1-fb2be78a98ca"}
+{"display":"admin账号的密码是多少","pastedContents":{},"timestamp":1773373180310,"project":"D:\\software\\codeAI\\codeai","sessionId":"0af017d0-a1a0-44c4-ade8-779a2dad00ca"}
+{"display":"怎样进入代码生成页面？","pastedContents":{},"timestamp":1773374158432,"project":"D:\\software\\codeAI\\codeai","sessionId":"0af017d0-a1a0-44c4-ade8-779a2dad00ca"}
+{"display":"这个项目怎样进入claude写代码页面？","pastedContents":{},"timestamp":1773374246166,"project":"D:\\software\\codeAI\\codeai","sessionId":"0af017d0-a1a0-44c4-ade8-779a2dad00ca"}
+{"display":"对比一下D:\\software\\codeAI\\codeai\\sql中的sys_llm_config_add_use_scene.sql和sys_llm_config.sql","pastedContents":{},"timestamp":1773375161725,"project":"D:\\software\\codeAI\\codeai","sessionId":"0af017d0-a1a0-44c4-ade8-779a2dad00ca"}
+{"display":"use_scene是什么","pastedContents":{},"timestamp":1773375382434,"project":"D:\\software\\codeAI\\codeai","sessionId":"0af017d0-a1a0-44c4-ade8-779a2dad00ca"}
+{"display":"这个系统有调用claude的sdk吗","pastedContents":{},"timestamp":1773380376105,"project":"D:\\software\\codeAI\\codeai","sessionId":"0af017d0-a1a0-44c4-ade8-779a2dad00ca"}
+{"display":"介绍一下这个项目","pastedContents":{},"timestamp":1773382509534,"project":"D:\\software\\codeai_webcc","sessionId":"5531e088-dbf8-4544-8184-de15724e7c8f"}
+{"display":"对比这个项目和D:\\software\\codeAI\\codeai中的项目","pastedContents":{},"timestamp":1773382616658,"project":"D:\\software\\codeai_webcc","sessionId":"5531e088-dbf8-4544-8184-de15724e7c8f"}
+{"display":"如何启动 codeai_webcc","pastedContents":{},"timestamp":1773382922709,"project":"D:\\software\\codeai_webcc","sessionId":"5531e088-dbf8-4544-8184-de15724e7c8f"}
+{"display":"帮我检查下我的hooks是不是都能用","pastedContents":{},"timestamp":1773384822867,"project":"D:\\myproject","sessionId":"6f3df183-5c94-4390-af58-ee5539de2037"}
+{"display":"我想把这个项目的claude配置应用到全局，要怎么做呢？","pastedContents":{},"timestamp":1773385218698,"project":"D:\\software\\codeAI\\codeai","sessionId":"27a98c63-7eac-4d6d-98af-e23073495a25"}
+{"display":"怎么把一个restful的api打包成可以接入openclaw的plugin","pastedContents":{},"timestamp":1773386071345,"project":"D:\\OpenClaw-Dev-Guide-main","sessionId":"eeef1a16-8523-400b-9b21-3bbf2d714c23"}
+{"display":"这个api还需要鉴权，需要先打开浏览器，让用户登录，然后再调用api","pastedContents":{},"timestamp":1773386372243,"project":"D:\\OpenClaw-Dev-Guide-main","sessionId":"eeef1a16-8523-400b-9b21-3bbf2d714c23"}
+{"display":"/copy","pastedContents":{},"timestamp":1773388391025,"project":"D:\\OpenClaw-Dev-Guide-main","sessionId":"eeef1a16-8523-400b-9b21-3bbf2d714c23"}
+{"display":"claude问答时报错：Ran 4 stop hooks\n  ⎿  node ~/.claude/hooks/stop.js\n  ⎿  bash ~/.claude/hooks/check-rulecatch.sh\n  ⎿  bash ~/.claude/hooks/verify-no-secrets.sh\n  ⎿  node .claude/hooks/stop.js\n  ⎿  Stop hook error: Failed with non-blocking status code: bash:\n  /c/Users/MI/.claude/hooks/verify-no-secrets.sh: No such file or directory\n  ⎿  Stop hook error: Failed with non-blocking status code: bash: /c/Users/MI/.claude/hooks/check-rulecatch.sh:\n  No such file or directory","pastedContents":{},"timestamp":1773388866621,"project":"D:\\software\\codeAI\\codeai","sessionId":"27a98c63-7eac-4d6d-98af-e23073495a25"}
+{"display":"claude问答时报错：Ran 4 stop hooks\n  ⎿  node ~/.claude/hooks/stop.  ⎿  bash ~/.claude/hooks/check-rulecatch.sh\n  ⎿  bash ~/.claude/hooks/verify-no-secrets.sh\n  ⎿  node .claude/hooks/stop.js\n  ⎿  Stop hook error: Failed with non-blocking status code: bash:\n  /c/Users/MI/.claude/hooks/verify-no-secrets.sh: No such file or directory\n  ⎿  Stop hook error: Failed with non-blocking status code: bash: /c/Users/MI/.claude/hooks/check-rulecatch.sh:\n  No such file or directory","pastedContents":{},"timestamp":1773389572931,"project":"D:\\software\\codeAI\\codeai","sessionId":"27a98c63-7eac-4d6d-98af-e23073495a25"}
+{"display":"我现在想做一个RAG系统的自动评测系统，管理评测集、评测计划和评测任务，用户每次只需要创建一个评测计划，计划中包含多个评测任务","pastedContents":{},"timestamp":1773392229251,"project":"D:\\自动评测系统1\\validation","sessionId":"7ae9e82a-feaf-48bd-8353-d8be9105c23b"}
