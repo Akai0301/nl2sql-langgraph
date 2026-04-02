@@ -22,8 +22,16 @@
             </el-icon>
             <h1 class="text-lg font-semibold text-gray-800">NL2SQL 智能问数</h1>
           </div>
-          <div class="text-sm text-gray-400">
-            基于 LangGraph 的自然语言查询
+          <div class="flex items-center gap-4">
+            <div class="text-sm text-gray-400">
+              基于 LangGraph 的自然语言查询
+            </div>
+            <!-- User Avatar Placeholder (SSO Ready) -->
+            <el-tooltip content="企业级登录（即将推出）" placement="bottom">
+              <div class="user-avatar-placeholder">
+                <el-icon :size="20"><User /></el-icon>
+              </div>
+            </el-tooltip>
           </div>
         </div>
       </header>
@@ -65,7 +73,7 @@
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { DataAnalysis, ChatLineRound } from '@element-plus/icons-vue'
+import { DataAnalysis, ChatLineRound, User } from '@element-plus/icons-vue'
 import { useQueryStore } from '@/stores/queryStore'
 import type { QueryHistory } from '@/types'
 import Sidebar from '@/views/components/Sidebar.vue'
@@ -192,5 +200,25 @@ html, body, #app {
 
 .messages-container {
   padding: 20px;
+}
+
+.user-avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  border: 2px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.user-avatar-placeholder:hover {
+  background: #dbeafe;
+  border-color: #3b82f6;
+  color: #3b82f6;
 }
 </style>
