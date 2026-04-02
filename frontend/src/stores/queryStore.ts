@@ -372,6 +372,79 @@ export const useQueryStore = defineStore('query', () => {
     })
   }
 
+  // Execute query with specific datasource
+  async function executeQueryWithDatasource(question: string, datasourceId: number): Promise<QueryResult> {
+    if (isExecuting.value) {
+      throw new Error('Already executing')
+    }
+
+    // Reset state
+    isExecuting.value = true
+    currentQuestion.value = question
+    result.value = null
+    error.value = null
+    resetAllNodes()
+
+    return new Promise<QueryResult>((resolve, reject) => {
+      const es = createStreamingConnection(
+        question,
+        (eventType, data) => {
+          switch (eventType) {
+            case 'init':
+              initializeGraph((data as { graph: GraphStructure }).graph)
+              break
+
+            case 'node_start':
+              const startData = data as { node: string; label: string }
+              updateNodeStatus(startData.node, 'running')
+              break
+
+            case 'node_complete':
+              const completeData = data as { node: string; status: string; output?: Record<string, unknown> }
+              updateNodeStatus(completeData.node, 'completed', completeData.output)
+              break
+
+            case 'node_error':
+              const errorData = data as { node: string; label: string; error: string }
+              updateNodeStatus(errorData.node, 'error', undefined, errorData.error)
+              break
+
+            case 'result':
+              const resultData = data as QueryResult & { session_id?: number }
+              result.value = {
+                question: resultData.question,
+                sql: resultData.sql,
+                columns: resultData.columns || [],
+                rows: resultData.rows || [],
+                attempt: resultData.attempt || 1,
+                executionError: resultData.executionError || null,
+              }
+              resolve(result.value)
+              break
+
+            case 'error':
+              const errData = data as { error: string }
+              error.value = errData.error
+              reject(new Error(errData.error))
+              break
+          }
+        },
+        (err) => {
+          error.value = err.message
+          isExecuting.value = false
+          reject(err)
+        },
+        () => {
+          isExecuting.value = false
+        },
+        null,  // session_id
+        datasourceId
+      )
+
+      eventSource.value = es
+    })
+  }
+
   // Load history on init
   loadHistory()
 
@@ -396,6 +469,7 @@ export const useQueryStore = defineStore('query', () => {
     hasError,
     // Actions
     executeQuery,
+    executeQueryWithDatasource,
     executeEditedSql,
     cancelQuery,
     initializeGraph,
