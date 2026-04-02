@@ -394,7 +394,7 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
         out = _mock_sql_generation(state)
         return {"generated_sql": out.sql, "execution_error": "", "selected_tables": out.selected_tables}
 
-    # LLM 路径（可选）：USE_MOCK_LLM=false 时启用
+    # LLM 路径：使用新的配置服务和提供商适配器
     question = state["question"]
     max_attempts = int(state.get("max_attempts", 2))
     attempt = int(state.get("attempt", 1))
@@ -426,17 +426,23 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
     )
 
     try:
-        from langchain_openai import ChatOpenAI  # lazy import：仅非 mock 模式加载
-    except Exception as e:
+        # 使用新的配置服务和 LLM 提供商适配器
+        from .config_service import get_active_ai_config
+        from .llm_provider import create_llm
+
+        config = get_active_ai_config()
+        llm = create_llm(config)
+
+        if llm is None:
+            # Mock 模式（配置返回 None）
+            out = _mock_sql_generation(state)
+            return {"generated_sql": out.sql, "execution_error": "", "selected_tables": out.selected_tables}
+
+    except ImportError as e:
         raise RuntimeError(
-            "USE_MOCK_LLM=false 但未能导入 langchain-openai。建议先安装依赖，或保持 USE_MOCK_LLM=true（默认）。"
+            "LLM 依赖未安装。建议先安装依赖（pip install langchain-openai langchain-anthropic），或保持 USE_MOCK_LLM=true（默认）。"
         ) from e
 
-    llm = ChatOpenAI(
-        model=_get_openai_model(),
-        temperature=0,
-        base_url=_get_openai_base_url(),
-    )
     structured = llm.with_structured_output(SQLGenerationOutput)
     messages = [
         {"role": "system", "content": system_prompt},
@@ -450,9 +456,10 @@ def sql_execution_node(state: NL2SQLState) -> dict[str, Any]:
     sql = state.get("generated_sql") or ""
     max_attempts = int(state.get("max_attempts", 2))
     attempt = int(state.get("attempt", 1))
+    datasource_id = state.get("datasource_id")
 
     try:
-        result = execute_sql(sql)
+        result = execute_sql(sql, datasource_id=datasource_id)
         return {"result": result, "execution_error": ""}
     except Exception as e:
         # 若还没到 max_attempts，则把 attempt 推进到下一轮

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from .graph_builder import build_graph
 from .streaming import stream_query_simple, GRAPH_STRUCTURE
 from .history_routes import router as history_router
+from .settings_routes import router as settings_router
 
 # Load .env from project root
 ENV_PATH = Path(__file__).parent.parent / ".env"
@@ -21,8 +22,20 @@ load_dotenv(ENV_PATH)
 app = FastAPI(title="nl2sql-langgraph")
 
 
+# CORS middleware - must handle OPTIONS requests
 @app.middleware("http")
-async def add_cors_headers(request, call_next):
+async def cors_middleware(request: Request, call_next):
+    # Handle OPTIONS preflight requests
+    if request.method == "OPTIONS":
+        return JSONResponse(
+            content={},
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
+
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
@@ -30,16 +43,11 @@ async def add_cors_headers(request, call_next):
     return response
 
 
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    return JSONResponse(content={}, headers={
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-        "Access-Control-Allow-Headers": "*",
-    })
-
 # Include history router
 app.include_router(history_router)
+
+# Include settings router
+app.include_router(settings_router)
 
 GRAPH = build_graph()
 
@@ -48,6 +56,7 @@ GRAPH = build_graph()
 
 class QueryRequest(BaseModel):
     question: str = Field(..., description="用户自然语言问题")
+    datasource_id: int | None = Field(None, description="数据源ID，不传则使用默认数据源")
 
 
 class QueryResponse(BaseModel):
@@ -64,10 +73,16 @@ class QueryResponse(BaseModel):
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest):
     """Synchronous query endpoint."""
+    # 设置数据源（如果指定）
+    if req.datasource_id:
+        from .datasource_manager import set_current_datasource
+        set_current_datasource(req.datasource_id)
+
     initial_state = {
         "question": req.question,
         "attempt": 1,
         "max_attempts": int(os.getenv("SQL_MAX_ATTEMPTS", "2")),
+        "datasource_id": req.datasource_id,
     }
     state = GRAPH.invoke(initial_state)
 
@@ -100,11 +115,12 @@ def query(req: QueryRequest):
 async def stream_query(
     question: str = Query(..., description="用户自然语言问题"),
     session_id: int | None = Query(None, description="会话ID，不传则创建新会话"),
+    datasource_id: int | None = Query(None, description="数据源ID，不传则使用默认数据源"),
 ):
     """SSE streaming endpoint for real-time progress updates."""
     max_attempts = int(os.getenv("SQL_MAX_ATTEMPTS", "2"))
     return StreamingResponse(
-        stream_query_simple(question, max_attempts, session_id),
+        stream_query_simple(question, max_attempts, session_id, datasource_id),
         media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
@@ -141,17 +157,22 @@ async def serve_frontend():
 
 # SPA fallback - serve index.html for all unmatched routes
 # Note: This must come AFTER all API routes are defined
-@app.get("/{path:path}", response_class=FileResponse)
-async def serve_spa(path: str):
-    """Serve SPA - return index.html for client-side routing."""
-    # First check if it's a static file request
+@app.exception_handler(404)
+async def spa_fallback(request, exc):
+    """Serve SPA - return index.html for 404s that are not API routes."""
+    # API paths should return 404
+    path = request.url.path.strip('/')
+    if path.startswith(('settings', 'history', 'query', 'stream', 'graph', 'api')):
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+    # Check for static file
     file_path = STATIC_DIR / path
     if file_path.exists() and file_path.is_file():
         return FileResponse(file_path)
 
-    # Otherwise serve index.html for SPA routing
+    # Serve index.html for SPA routing
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
         return FileResponse(index_path)
 
-    return {"message": "Frontend not built. Run 'npm run build' in frontend directory."}
+    return JSONResponse(status_code=404, content={"detail": "Frontend not built. Run 'npm run build' in frontend directory."})
