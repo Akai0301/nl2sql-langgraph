@@ -4,4 +4,9 @@ frontend/node_modules/
 .claude/cache/
 .claude/backups/
 .claude/telemetry/
+.claude/file-history/
+.claude/projects/
+.claude/shell-snapshots/
+.claude/workflows/
 debug_output
+.env

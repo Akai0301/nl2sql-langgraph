@@ -1,0 +1,18 @@
+Question: 按月份统计最近半年的销售趋势
+
+=== metrics_catalog ===
+metric: 订单金额
+  synonyms: ['订单金额', '订单销售额', 'gmv', '销售额', '成交额', '实付金额']
+  "订单金额" in question: False
+  "订单销售额" in question: False
+  "gmv" in question: False
+  "销售额" in question: False
+  "成交额" in question: False
+  "实付金额" in question: False
+
+metric: 订单数
+  synonyms: ['订单数', '订单数量', '下单数', '成交单数']
+  "订单数" in question: False
+  "订单数量" in question: False
+  "下单数" in question: False
+  "成交单数" in question: False
