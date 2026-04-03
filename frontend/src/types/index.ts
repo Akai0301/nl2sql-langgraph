@@ -165,3 +165,25 @@ export interface ExampleQuestion {
   question: string
   category: string
 }
+
+// DataSource types
+export interface DataSource {
+  id: number | null
+  ds_name: string
+  ds_type: 'postgresql' | 'mysql' | 'sqlite'
+  host?: string
+  port?: number
+  database?: string
+  username?: string
+  is_query_target?: boolean
+  is_from_env?: boolean  // 标识是否来自 .env
+}
+
+export interface ActiveDataSourceResponse {
+  datasource: DataSource | null
+  message?: string
+}
+
+export interface DataSourceListResponse {
+  items: DataSource[]
+}

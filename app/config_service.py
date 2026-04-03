@@ -167,7 +167,7 @@ def _fetch_query_datasource_from_mysql() -> Optional[DataSourceConfig]:
         conn = get_mysql_connection()
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, ds_name, ds_type, host, port, database,
+                SELECT id, ds_name, ds_type, host, port, `database`,
                        username, password, dsn_override, is_query_target, extra_params
                 FROM datasource_config
                 WHERE is_query_target = 1
@@ -214,7 +214,7 @@ def get_datasource_by_id(ds_id: int) -> Optional[DataSourceConfig]:
         conn = get_mysql_connection()
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, ds_name, ds_type, host, port, database,
+                SELECT id, ds_name, ds_type, host, port, `database`,
                        username, password, dsn_override, is_query_target, extra_params
                 FROM datasource_config
                 WHERE id = %s
@@ -245,7 +245,7 @@ def get_datasource_by_name(ds_name: str) -> Optional[DataSourceConfig]:
         conn = get_mysql_connection()
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, ds_name, ds_type, host, port, database,
+                SELECT id, ds_name, ds_type, host, port, `database`,
                        username, password, dsn_override, is_query_target, extra_params
                 FROM datasource_config
                 WHERE ds_name = %s
@@ -307,7 +307,7 @@ def list_datasource_configs() -> list[DataSourceConfig]:
         conn = get_mysql_connection()
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT id, ds_name, ds_type, host, port, database,
+                SELECT id, ds_name, ds_type, host, port, `database`,
                        username, password, dsn_override, is_query_target, extra_params
                 FROM datasource_config
                 ORDER BY is_query_target DESC, created_at DESC

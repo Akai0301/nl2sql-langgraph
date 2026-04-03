@@ -62,6 +62,33 @@
       <!-- 底部输入框 -->
       <div class="border-t bg-white p-4">
         <div class="max-w-4xl mx-auto">
+          <!-- 数据源选择器 -->
+          <div class="flex items-center gap-2 mb-3">
+            <el-icon class="text-gray-400"><Database /></el-icon>
+            <span class="text-sm text-gray-500">当前数据源：</span>
+            <el-select
+              v-model="currentDatasourceId"
+              placeholder="选择数据源"
+              size="small"
+              style="width: 240px"
+              :loading="settingsStore.loading"
+              @change="handleDatasourceChange"
+            >
+              <el-option
+                v-for="ds in settingsStore.datasources"
+                :key="ds.id"
+                :label="`${ds.ds_name} (${settingsStore.getTypeLabel(ds.ds_type)})`"
+                :value="ds.id"
+              />
+            </el-select>
+            <el-tag v-if="settingsStore.activeDatasource?.is_from_env" size="small" type="info">
+              来自 .env
+            </el-tag>
+            <span v-if="settingsStore.datasourceMessage" class="text-xs text-amber-500">
+              {{ settingsStore.datasourceMessage }}
+            </span>
+          </div>
+          <!-- 输入框 -->
           <div class="flex gap-3 items-end">
             <div class="flex-1 relative">
               <el-input
@@ -105,23 +132,47 @@
 
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
-import { Document, Loading, Promotion } from '@element-plus/icons-vue'
+import { Document, Loading, Promotion, Database } from '@element-plus/icons-vue'
 import { useQueryStore } from '@/stores/queryStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import QuerySidebar from './components/QuerySidebar.vue'
 import MessageCard from './components/MessageCard.vue'
 import type { QueryHistory, StepState } from '@/types'
 
 const store = useQueryStore()
+const settingsStore = useSettingsStore()
 const question = ref('')
 const activeHistoryId = ref<number | undefined>()
 const messageContainer = ref<HTMLElement | null>(null)
+const currentDatasourceId = ref<number | null>(null)
+
+// 监听 activeDatasource 变化，更新 currentDatasourceId
+watch(() => settingsStore.activeDatasource, (ds) => {
+  if (ds) {
+    currentDatasourceId.value = ds.id
+  }
+}, { immediate: true })
 
 const examples = [
+  // 时间维度
   '查询最近30天的订单金额',
   '按月统计销售额',
+  '过去7天每天的订单数量',
+  // 地区维度
   '查询各地区的订单数量',
   '过去7天按地区的GMV',
+  '各省份的销售排名',
+  // 客户维度
   '各会员等级的消费金额分布',
+  '消费前10的客户',
+  '新客户与老客户的消费对比',
+  // 商品维度
+  '销量最好的5个商品',
+  '各商品类别的销售额占比',
+  // 综合分析
+  '上个月各地区的销售同比增长',
+  '订单状态分布情况',
+  '平均客单价趋势',
 ]
 
 function getStepType(status: StepState['status']): '' | 'success' | 'warning' | 'danger' | 'info' {
@@ -180,6 +231,10 @@ function handleRetry() {
   if (store.currentQuestion) {
     store.executeQuery(store.currentQuestion)
   }
+}
+
+async function handleDatasourceChange(dsId: number) {
+  await settingsStore.switchDatasource(dsId)
 }
 
 function scrollToBottom() {

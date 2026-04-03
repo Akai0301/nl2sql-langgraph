@@ -287,6 +287,33 @@ def api_list_datasources():
     }
 
 
+@router.get("/datasource/active")
+def api_get_active_datasource():
+    """获取当前用于问数的数据源（优先级：MySQL配置表 > .env）"""
+    from .config_service import get_query_datasource
+
+    config = get_query_datasource()
+
+    if not config or not config.get_dsn():
+        return {
+            "datasource": None,
+            "message": "未配置数据源，请先在系统设置中添加数据源或配置 .env 文件中的 POSTGRES_DSN",
+        }
+
+    return {
+        "datasource": {
+            "id": config.id,
+            "ds_name": config.ds_name or ".env 默认数据源",
+            "ds_type": config.ds_type,
+            "host": config.host,
+            "port": config.port,
+            "database": config.database,
+            "is_from_env": config.id is None,  # 标识是否来自 .env
+        },
+        "message": None,
+    }
+
+
 @router.post("/datasource")
 def api_create_datasource(req: DataSourceCreateRequest):
     """创建新数据源配置"""
@@ -299,7 +326,7 @@ def api_create_datasource(req: DataSourceCreateRequest):
 
         cur.execute("""
             INSERT INTO datasource_config
-            (ds_name, ds_type, host, port, database, username, password, dsn_override, is_query_target, extra_params)
+            (ds_name, ds_type, host, port, `database`, username, password, dsn_override, is_query_target, extra_params)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
         """, (
             req.ds_name,
@@ -364,7 +391,7 @@ def api_update_datasource(ds_id: int, req: DataSourceUpdateRequest):
         params.append(req.port)
 
     if req.database is not None:
-        updates.append("database = %s")
+        updates.append("`database` = %s")
         params.append(req.database)
 
     if req.username is not None:
