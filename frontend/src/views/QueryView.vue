@@ -154,11 +154,25 @@ watch(() => settingsStore.activeDatasource, (ds) => {
 }, { immediate: true })
 
 const examples = [
+  // 时间维度
   '查询最近30天的订单金额',
   '按月统计销售额',
+  '过去7天每天的订单数量',
+  // 地区维度
   '查询各地区的订单数量',
   '过去7天按地区的GMV',
+  '各省份的销售排名',
+  // 客户维度
   '各会员等级的消费金额分布',
+  '消费前10的客户',
+  '新客户与老客户的消费对比',
+  // 商品维度
+  '销量最好的5个商品',
+  '各商品类别的销售额占比',
+  // 综合分析
+  '上个月各地区的销售同比增长',
+  '订单状态分布情况',
+  '平均客单价趋势',
 ]
 
 function getStepType(status: StepState['status']): '' | 'success' | 'warning' | 'danger' | 'info' {
