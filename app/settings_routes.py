@@ -299,7 +299,7 @@ def api_create_datasource(req: DataSourceCreateRequest):
 
         cur.execute("""
             INSERT INTO datasource_config
-            (ds_name, ds_type, host, port, database, username, password, dsn_override, is_query_target, extra_params)
+            (ds_name, ds_type, host, port, `database`, username, password, dsn_override, is_query_target, extra_params)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
         """, (
             req.ds_name,
@@ -364,7 +364,7 @@ def api_update_datasource(ds_id: int, req: DataSourceUpdateRequest):
         params.append(req.port)
 
     if req.database is not None:
-        updates.append("database = %s")
+        updates.append("`database` = %s")
         params.append(req.database)
 
     if req.username is not None:

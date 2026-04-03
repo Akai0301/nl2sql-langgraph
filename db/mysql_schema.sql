@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS datasource_config (
     ds_type VARCHAR(20) NOT NULL COMMENT '类型：postgresql/mysql/sqlite',
     host VARCHAR(255) COMMENT '主机地址',
     port INT COMMENT '端口',
-    database VARCHAR(100) COMMENT '数据库名',
+    `database` VARCHAR(100) COMMENT '数据库名',
     username VARCHAR(100) COMMENT '用户名',
     password TEXT COMMENT '密码',
     dsn_override TEXT COMMENT '完整 DSN（优先使用）',
