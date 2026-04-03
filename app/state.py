@@ -6,6 +6,7 @@ from typing import Any, Annotated, Optional, TypedDict
 class NL2SQLState(TypedDict, total=False):
     # Input
     question: str
+    datasource_id: int  # 可选：指定数据源 ID
 
     # Derived by analyzer
     keywords: list[str]

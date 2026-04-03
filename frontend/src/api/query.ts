@@ -51,12 +51,16 @@ export function createStreamingConnection(
   onEvent: (event: string, data: unknown) => void,
   onError: (error: Error) => void,
   onComplete: () => void,
-  sessionId: number | null = null
+  sessionId: number | null = null,
+  datasourceId: number | null = null
 ): EventSource {
   const url = new URL(`${API_BASE}/stream`, window.location.origin)
   url.searchParams.set('question', question)
   if (sessionId !== null) {
     url.searchParams.set('session_id', String(sessionId))
+  }
+  if (datasourceId !== null) {
+    url.searchParams.set('datasource_id', String(datasourceId))
   }
 
   const eventSource = new EventSource(url.toString())

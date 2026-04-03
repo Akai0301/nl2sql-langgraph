@@ -176,12 +176,18 @@ async def stream_query_simple(
     question: str,
     max_attempts: int = 2,
     session_id: int | None = None,
+    datasource_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Simple streaming that executes nodes sequentially and yields progress.
     Used when astream_events is not available or graph is not async.
     """
     from . import nodes
+
+    # 设置数据源（如果指定）
+    if datasource_id:
+        from .datasource_manager import set_current_datasource
+        set_current_datasource(datasource_id)
 
     # Yield initial state with graph structure
     yield _sse_event("init", {
@@ -193,6 +199,7 @@ async def stream_query_simple(
         "question": question,
         "attempt": 1,
         "max_attempts": max_attempts,
+        "datasource_id": datasource_id,
     }
 
     # Execute nodes in order

@@ -43,23 +43,21 @@ def safe_sql_validate(sql: str, sql_max_rows: int) -> tuple[str, str | None]:
     return s, None
 
 
-def execute_sql(sql: str) -> dict[str, Any]:
+def execute_sql(sql: str, datasource_id: int | None = None) -> dict[str, Any]:
     """
     使用确定性的数据库直连 SELECT 执行。
     返回 columns/rows，方便前端稳定渲染。
+
+    支持多数据源：如果指定 datasource_id，则使用该数据源；
+    否则使用当前激活的问数数据源。
     """
-    dsn = get_postgres_dsn()
     max_rows = int(os.getenv("SQL_MAX_ROWS", "200"))
     validated_sql, _ = safe_sql_validate(sql, max_rows)
 
-    with psycopg.connect(dsn) as conn:
-        with conn.cursor() as cur:
-            cur.execute(validated_sql)
-            rows = cur.fetchall()
-            columns = [desc[0] for desc in (cur.description or [])]
+    # 使用数据源管理器执行 SQL
+    from .datasource_manager import execute_sql_on_datasource
 
-    # rows 需要可 JSON 化（psycopg 已给出 python 原生类型，示例里无需额外处理）
-    return {"columns": columns, "rows": [list(r) for r in rows]}
+    return execute_sql_on_datasource(validated_sql, ds_id=datasource_id, max_rows=max_rows)
 
 
 def fetch_knowledge_hits(keywords: list[str]) -> list[dict[str, Any]]:

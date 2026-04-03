@@ -1,115 +1,199 @@
 <template>
   <div class="query-view h-full flex">
-    <!-- Main Content -->
-    <div class="flex-1 flex flex-col overflow-hidden">
-      <!-- Query Input -->
-      <QueryInput class="p-4 bg-white border-b" />
+    <!-- 左侧：导航 + 历史记录 -->
+    <QuerySidebar
+      :history="store.history"
+      :active-id="activeHistoryId"
+      @newChat="handleNewChat"
+      @selectHistory="handleSelectHistory"
+      @toggleFavorite="handleToggleFavorite"
+      @removeHistory="handleRemoveHistory"
+      @clearHistory="handleClearHistory"
+    />
 
-      <!-- Flow Graph -->
-      <div class="h-64 bg-white border-b">
-        <FlowGraph />
+    <!-- 右侧：消息流 + 输入框 -->
+    <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
+      <!-- 消息流区域 -->
+      <div class="flex-1 overflow-auto" ref="messageContainer">
+        <!-- 空状态 -->
+        <div v-if="store.conversations.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400">
+          <el-icon :size="64"><Document /></el-icon>
+          <p class="mt-4 text-lg">开始您的智能问数之旅</p>
+          <p class="mt-2 text-sm">输入自然语言问题，自动生成 SQL 并查询数据</p>
+          <div class="mt-6 flex gap-2 flex-wrap justify-center max-w-lg">
+            <el-tag
+              v-for="example in examples"
+              :key="example"
+              size="large"
+              class="cursor-pointer hover:bg-blue-100 transition-all"
+              @click="handleExampleClick(example)"
+            >
+              {{ example }}
+            </el-tag>
+          </div>
+        </div>
+
+        <!-- 消息列表 -->
+        <div v-else class="max-w-4xl mx-auto py-6 px-4 space-y-6">
+          <MessageCard
+            v-for="msg in store.conversations"
+            :key="msg.id"
+            :message="msg"
+            @retry="handleRetry"
+          />
+        </div>
+
+        <!-- 加载指示器 -->
+        <div v-if="store.isExecuting && store.conversations.length > 0" class="max-w-4xl mx-auto pb-6 px-4">
+          <div class="bg-white rounded-lg shadow-sm p-4 flex items-center gap-3">
+            <el-icon class="is-loading text-2xl text-blue-500"><Loading /></el-icon>
+            <div>
+              <p class="text-sm font-medium text-gray-700">正在处理您的查询...</p>
+              <div class="mt-2 flex gap-2">
+                <el-tag v-for="step in store.orderedSteps" :key="step.id" :type="getStepType(step.status)" size="small">
+                  {{ step.label }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Results Area -->
-      <div class="flex-1 overflow-auto p-4">
-        <div v-if="store.isExecuting" class="flex items-center justify-center h-full">
-          <el-icon class="is-loading text-4xl text-blue-500">
-            <Loading />
-          </el-icon>
-          <span class="ml-3 text-gray-500">正在处理您的查询...</span>
-        </div>
-
-        <div v-else-if="store.hasError" class="flex items-center justify-center h-full">
-          <el-result icon="error" :title="store.error || '查询失败'">
-            <template #extra>
-              <el-button type="primary" @click="retryQuery" :loading="store.isExecuting">
-                <el-icon><RefreshRight /></el-icon>
-                重新回答
-              </el-button>
-            </template>
-          </el-result>
-        </div>
-
-        <div v-else-if="store.hasResult" class="space-y-4">
-          <!-- SQL Display -->
-          <div v-if="store.result?.sql" class="bg-white rounded-lg shadow-sm p-4">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-medium text-gray-700">生成的 SQL</h3>
-              <el-button text type="primary" @click="copySql">
-                <el-icon><CopyDocument /></el-icon>
-                复制
-              </el-button>
+      <!-- 底部输入框 -->
+      <div class="border-t bg-white p-4">
+        <div class="max-w-4xl mx-auto">
+          <div class="flex gap-3 items-end">
+            <div class="flex-1 relative">
+              <el-input
+                v-model="question"
+                type="textarea"
+                :rows="1"
+                :autosize="{ minRows: 1, maxRows: 4 }"
+                placeholder="输入您的问题，例如：查询过去30天按地区的订单金额"
+                size="large"
+                :disabled="store.isExecuting"
+                resize="none"
+                @keyup.enter.exact="handleSubmit"
+              />
             </div>
-            <pre class="code-block text-sm overflow-x-auto">{{ store.result.sql }}</pre>
-          </div>
-
-          <!-- Error Info -->
-          <div v-if="store.result?.executionError" class="bg-red-50 rounded-lg p-4">
-            <div class="flex items-center text-red-600">
-              <el-icon class="mr-2"><WarningFilled /></el-icon>
-              <span>{{ store.result.executionError }}</span>
-            </div>
-          </div>
-
-          <!-- Results Tabs -->
-          <el-tabs v-if="store.result?.rows?.length" v-model="activeTab">
-            <el-tab-pane label="数据表格" name="table">
-              <ResultTable />
-            </el-tab-pane>
-            <el-tab-pane label="数据可视化" name="chart">
-              <ChartPanel />
-            </el-tab-pane>
-          </el-tabs>
-
-          <!-- Retry Button Footer -->
-          <div class="result-footer">
-            <el-button type="primary" @click="retryQuery" :loading="store.isExecuting">
-              <el-icon><RefreshRight /></el-icon>
-              重新回答
+            <el-button
+              type="primary"
+              size="large"
+              :loading="store.isExecuting"
+              :disabled="!question.trim()"
+              @click="handleSubmit"
+            >
+              <el-icon v-if="!store.isExecuting"><Promotion /></el-icon>
+              {{ store.isExecuting ? '查询中' : '发送' }}
+            </el-button>
+            <el-button
+              v-if="store.isExecuting"
+              size="large"
+              @click="store.cancelQuery"
+            >
+              取消
             </el-button>
           </div>
-        </div>
-
-        <!-- Empty State -->
-        <div v-else class="flex flex-col items-center justify-center h-full text-gray-400">
-          <el-icon :size="64"><Document /></el-icon>
-          <p class="mt-4 text-lg">输入问题开始查询</p>
-          <p class="mt-2 text-sm">支持自然语言描述的数据查询需求</p>
+          <div class="mt-2 text-xs text-gray-400 text-center">
+            按 Enter 发送，Shift + Enter 换行
+          </div>
         </div>
       </div>
     </div>
-
-    <!-- History Panel -->
-    <HistoryPanel class="w-80 bg-white border-l" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Loading, CopyDocument, WarningFilled, Document, RefreshRight } from '@element-plus/icons-vue'
+import { ref, nextTick, watch } from 'vue'
+import { Document, Loading, Promotion } from '@element-plus/icons-vue'
 import { useQueryStore } from '@/stores/queryStore'
-import QueryInput from './components/QueryInput.vue'
-import FlowGraph from './components/FlowGraph.vue'
-import ResultTable from './components/ResultTable.vue'
-import ChartPanel from './components/ChartPanel.vue'
-import HistoryPanel from './components/HistoryPanel.vue'
+import QuerySidebar from './components/QuerySidebar.vue'
+import MessageCard from './components/MessageCard.vue'
+import type { QueryHistory, StepState } from '@/types'
 
 const store = useQueryStore()
-const activeTab = ref('table')
+const question = ref('')
+const activeHistoryId = ref<number | undefined>()
+const messageContainer = ref<HTMLElement | null>(null)
 
-function copySql() {
-  if (store.result?.sql) {
-    navigator.clipboard.writeText(store.result.sql)
-    ElMessage.success('SQL 已复制到剪贴板')
+const examples = [
+  '查询最近30天的订单金额',
+  '按月统计销售额',
+  '查询各地区的订单数量',
+  '过去7天按地区的GMV',
+  '各会员等级的消费金额分布',
+]
+
+function getStepType(status: StepState['status']): '' | 'success' | 'warning' | 'danger' | 'info' {
+  switch (status) {
+    case 'running': return 'info'
+    case 'completed': return 'success'
+    case 'error': return 'danger'
+    default: return ''
   }
 }
 
-function retryQuery() {
+async function handleSubmit() {
+  const q = question.value.trim()
+  if (!q || store.isExecuting) return
+
+  question.value = ''
+  activeHistoryId.value = undefined
+
+  try {
+    await store.executeQuery(q)
+    scrollToBottom()
+  } catch (e) {
+    console.error('Query failed:', e)
+  }
+}
+
+function handleExampleClick(example: string) {
+  question.value = example
+  handleSubmit()
+}
+
+function handleNewChat() {
+  store.clearConversations()
+  activeHistoryId.value = undefined
+  question.value = ''
+}
+
+function handleSelectHistory(item: QueryHistory) {
+  activeHistoryId.value = item.id
+  store.loadHistoryResult(item)
+}
+
+async function handleToggleFavorite(id: number) {
+  await store.toggleFavorite(id)
+}
+
+async function handleRemoveHistory(id: number) {
+  await store.removeFromHistory(id)
+}
+
+async function handleClearHistory() {
+  await store.clearAllHistory()
+}
+
+function handleRetry() {
   if (store.currentQuestion) {
     store.executeQuery(store.currentQuestion)
   }
 }
+
+function scrollToBottom() {
+  nextTick(() => {
+    if (messageContainer.value) {
+      messageContainer.value.scrollTop = messageContainer.value.scrollHeight
+    }
+  })
+}
+
+// 滚动到底部当新消息添加
+watch(() => store.conversations.length, () => {
+  scrollToBottom()
+})
 </script>
 
 <style scoped>
@@ -117,11 +201,7 @@ function retryQuery() {
   background: #f5f7fa;
 }
 
-.result-footer {
-  display: flex;
-  justify-content: flex-start;
-  padding-top: 16px;
-  margin-top: 16px;
-  border-top: 1px solid #e5e7eb;
+.el-textarea__inner {
+  font-size: 15px;
 }
 </style>
