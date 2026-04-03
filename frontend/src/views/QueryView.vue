@@ -62,6 +62,33 @@
       <!-- 底部输入框 -->
       <div class="border-t bg-white p-4">
         <div class="max-w-4xl mx-auto">
+          <!-- 数据源选择器 -->
+          <div class="flex items-center gap-2 mb-3">
+            <el-icon class="text-gray-400"><Database /></el-icon>
+            <span class="text-sm text-gray-500">当前数据源：</span>
+            <el-select
+              v-model="currentDatasourceId"
+              placeholder="选择数据源"
+              size="small"
+              style="width: 240px"
+              :loading="settingsStore.loading"
+              @change="handleDatasourceChange"
+            >
+              <el-option
+                v-for="ds in settingsStore.datasources"
+                :key="ds.id"
+                :label="`${ds.ds_name} (${settingsStore.getTypeLabel(ds.ds_type)})`"
+                :value="ds.id"
+              />
+            </el-select>
+            <el-tag v-if="settingsStore.activeDatasource?.is_from_env" size="small" type="info">
+              来自 .env
+            </el-tag>
+            <span v-if="settingsStore.datasourceMessage" class="text-xs text-amber-500">
+              {{ settingsStore.datasourceMessage }}
+            </span>
+          </div>
+          <!-- 输入框 -->
           <div class="flex gap-3 items-end">
             <div class="flex-1 relative">
               <el-input
@@ -105,16 +132,26 @@
 
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
-import { Document, Loading, Promotion } from '@element-plus/icons-vue'
+import { Document, Loading, Promotion, Database } from '@element-plus/icons-vue'
 import { useQueryStore } from '@/stores/queryStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import QuerySidebar from './components/QuerySidebar.vue'
 import MessageCard from './components/MessageCard.vue'
 import type { QueryHistory, StepState } from '@/types'
 
 const store = useQueryStore()
+const settingsStore = useSettingsStore()
 const question = ref('')
 const activeHistoryId = ref<number | undefined>()
 const messageContainer = ref<HTMLElement | null>(null)
+const currentDatasourceId = ref<number | null>(null)
+
+// 监听 activeDatasource 变化，更新 currentDatasourceId
+watch(() => settingsStore.activeDatasource, (ds) => {
+  if (ds) {
+    currentDatasourceId.value = ds.id
+  }
+}, { immediate: true })
 
 const examples = [
   '查询最近30天的订单金额',
@@ -180,6 +217,10 @@ function handleRetry() {
   if (store.currentQuestion) {
     store.executeQuery(store.currentQuestion)
   }
+}
+
+async function handleDatasourceChange(dsId: number) {
+  await settingsStore.switchDatasource(dsId)
 }
 
 function scrollToBottom() {

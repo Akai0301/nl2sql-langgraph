@@ -1,4 +1,4 @@
-import type { GraphStructure, QueryResult, HistoryListResponse, HistoryListParams, QueryHistory } from '@/types'
+import type { GraphStructure, QueryResult, HistoryListResponse, HistoryListParams, QueryHistory, DataSource, ActiveDataSourceResponse, DataSourceListResponse } from '@/types'
 
 // Use relative path - Vite proxy will forward to backend
 const API_BASE = ''
@@ -256,6 +256,49 @@ export async function clearHistory(): Promise<{ deleted_count: number }> {
 
   if (!response.ok) {
     throw new Error(`Failed to clear history: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+// ============ DataSource API ============
+
+/**
+ * Get the active datasource for query
+ */
+export async function getActiveDatasource(): Promise<ActiveDataSourceResponse> {
+  const response = await fetch(`${API_BASE}/settings/datasource/active`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch active datasource: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * List all datasources
+ */
+export async function listDatasources(): Promise<DataSourceListResponse> {
+  const response = await fetch(`${API_BASE}/settings/datasource`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch datasources: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Set datasource as query target
+ */
+export async function activateDatasource(dsId: number): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE}/settings/datasource/${dsId}/activate-query`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to activate datasource: ${response.statusText}`)
   }
 
   return response.json()
