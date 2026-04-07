@@ -102,6 +102,14 @@
         </div>
       </el-tab-pane>
 
+      <!-- Schema 学习 -->
+      <el-tab-pane label="Schema 学习" name="schema">
+        <SchemaPreview
+          :datasource-id="datasourceId"
+          @learning-started="handleLearningStarted"
+        />
+      </el-tab-pane>
+
       <!-- 知识管理 -->
       <el-tab-pane label="知识" name="knowledge">
         <KnowledgePanel :datasource-id="datasourceId" />
@@ -112,6 +120,17 @@
         <DatasourceChat :datasource-id="datasourceId" />
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 学习进度弹窗 -->
+    <LearningProgressDialog
+      v-model:visible="showLearningDialog"
+      :task-id="learningTaskId"
+      :datasource-id="datasourceId"
+      :datasource-name="datasource?.ds_name || ''"
+      @completed="handleLearningCompleted"
+      @view-schema="handleViewSchema"
+      @retry="handleRetryLearning"
+    />
   </div>
 </template>
 
@@ -131,6 +150,8 @@ import {
 } from '@/api/settings'
 import KnowledgePanel from './components/KnowledgePanel.vue'
 import DatasourceChat from './components/DatasourceChat.vue'
+import SchemaPreview from './components/SchemaPreview.vue'
+import LearningProgressDialog from './components/LearningProgressDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -140,6 +161,10 @@ const datasourceId = computed(() => Number(route.params.id))
 const loading = ref(false)
 const datasource = ref<DataSourceConfig | null>(null)
 const activeTab = ref('info')
+
+// 学习相关状态
+const showLearningDialog = ref(false)
+const learningTaskId = ref<number | null>(null)
 
 // 数据预览
 const tables = ref<TableInfo[]>([])
@@ -225,6 +250,27 @@ async function handleSetActive() {
   } catch (e) {
     ElMessage.error('设置失败')
   }
+}
+
+// ============ 学习相关方法 ============
+
+function handleLearningStarted(taskId: number) {
+  learningTaskId.value = taskId
+  showLearningDialog.value = true
+}
+
+function handleLearningCompleted() {
+  ElMessage.success('Schema 学习完成')
+  // 刷新数据
+  loadDatasource()
+}
+
+function handleViewSchema() {
+  activeTab.value = 'schema'
+}
+
+async function handleRetryLearning() {
+  // 重试学习 - 由 SchemaPreview 组件处理
 }
 
 onMounted(() => {

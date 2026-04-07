@@ -37,11 +37,19 @@
             <el-tag v-else type="info" size="small">否</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280">
+        <el-table-column label="操作" width="340">
           <template #default="{ row }">
             <el-button-group>
               <el-button size="small" @click="handleDetail(row)">详情</el-button>
               <el-button size="small" @click="handleTest(row.id)">测试</el-button>
+              <el-button
+                size="small"
+                type="primary"
+                :loading="learningTaskId !== null && learningDatasourceId === row.id"
+                @click="handleLearn(row)"
+              >
+                学习
+              </el-button>
               <el-button
                 v-if="!row.is_query_target"
                 size="small"
@@ -118,6 +126,17 @@
         <el-button type="primary" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 学习进度弹窗 -->
+    <LearningProgressDialog
+      v-model:visible="showLearningDialog"
+      :task-id="learningTaskId"
+      :datasource-id="learningDatasourceId"
+      :datasource-name="learningDatasourceName"
+      @completed="handleLearningCompleted"
+      @view-schema="handleViewSchema"
+      @retry="handleRetryLearning"
+    />
   </div>
 </template>
 
@@ -127,12 +146,26 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { DataSourceConfig } from '@/types/settings'
-import { listDatasources, createDatasource, deleteDatasource, testDatasource, setQueryDatasource } from '@/api/settings'
+import {
+  listDatasources,
+  createDatasource,
+  deleteDatasource,
+  testDatasource,
+  setQueryDatasource,
+  triggerSchemaLearning,
+} from '@/api/settings'
+import LearningProgressDialog from './components/LearningProgressDialog.vue'
 
 const router = useRouter()
 const loading = ref(false)
 const datasources = ref<DataSourceConfig[]>([])
 const showAddDialog = ref(false)
+
+// 学习相关状态
+const showLearningDialog = ref(false)
+const learningTaskId = ref<number | null>(null)
+const learningDatasourceId = ref(0)
+const learningDatasourceName = ref('')
 
 const formData = ref({
   ds_name: '',
@@ -230,6 +263,48 @@ async function handleDelete(id: number) {
     loadDatasources()
   } catch {
     // Cancelled
+  }
+}
+
+// ============ 学习相关方法 ============
+
+async function handleLearn(row: DataSourceConfig) {
+  try {
+    const result = await triggerSchemaLearning(row.id)
+    if (result.success) {
+      learningTaskId.value = result.task_id
+      learningDatasourceId.value = row.id
+      learningDatasourceName.value = row.ds_name
+      showLearningDialog.value = true
+    } else {
+      ElMessage.error(result.message || '启动学习失败')
+    }
+  } catch (e: unknown) {
+    ElMessage.error((e as Error).message || '启动学习失败')
+  }
+}
+
+function handleLearningCompleted() {
+  ElMessage.success('Schema 学习完成')
+  loadDatasources()
+}
+
+function handleViewSchema() {
+  // 跳转到数据源详情页查看 Schema
+  router.push(`/settings/datasource/${learningDatasourceId.value}`)
+}
+
+async function handleRetryLearning() {
+  // 重新触发学习
+  if (learningDatasourceId.value) {
+    try {
+      const result = await triggerSchemaLearning(learningDatasourceId.value)
+      if (result.success) {
+        learningTaskId.value = result.task_id
+      }
+    } catch (e: unknown) {
+      ElMessage.error((e as Error).message || '重试失败')
+    }
   }
 }
 

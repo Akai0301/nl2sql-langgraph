@@ -17,6 +17,10 @@
             <div v-else class="step-pending-dot"></div>
           </div>
           <div class="step-label">{{ step.label }}</div>
+          <!-- Display duration for completed steps -->
+          <div v-if="step.status === 'completed' && step.durationMs" class="step-duration">
+            {{ formatDuration(step.durationMs) }}
+          </div>
           <el-icon v-if="hasDetails(step)" class="expand-icon">
             <ArrowDown v-if="expandedSteps.has(step.id)" />
             <ArrowRight v-else />
@@ -101,11 +105,15 @@ const steps = computed(() => {
     const hasAnyError = retrievalSteps.some(s => s.status === 'error')
     const allCompleted = retrievalSteps.every(s => s.status === 'completed')
 
+    // Calculate total duration for retrieval steps (use max since they run in parallel)
+    const maxDuration = Math.max(...retrievalSteps.map(s => s.durationMs || 0))
+
     result.splice(1, 0, {
       id: 'retrieval',
       label: '智能检索',
       status: hasAnyError ? 'error' : hasAnyRunning ? 'running' : allCompleted ? 'completed' : 'pending',
       output: { retrievalSteps },
+      durationMs: allCompleted && maxDuration > 0 ? maxDuration : undefined,
     })
   }
 
@@ -154,6 +162,18 @@ function toggleExpand(stepId: string) {
   } else {
     expandedSteps.value.clear()
     expandedSteps.value.add(stepId)
+  }
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`
+  } else if (ms < 60000) {
+    return `${(ms / 1000).toFixed(1)}s`
+  } else {
+    const minutes = Math.floor(ms / 60000)
+    const seconds = Math.round((ms % 60000) / 1000)
+    return `${minutes}m${seconds}s`
   }
 }
 </script>
@@ -225,6 +245,12 @@ function toggleExpand(stepId: string) {
   font-weight: 600;
   margin-top: 4px;
   white-space: nowrap;
+}
+
+.step-duration {
+  font-size: 10px;
+  color: #6b7280;
+  margin-top: 2px;
 }
 
 .step-item.completed .step-label {

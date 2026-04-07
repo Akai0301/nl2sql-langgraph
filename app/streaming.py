@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, AsyncGenerator
 
 from starlette.responses import StreamingResponse
@@ -202,6 +203,11 @@ async def stream_query_simple(
         "datasource_id": datasource_id,
     }
 
+    # Track timing and token usage
+    node_timings: dict[str, dict[str, float]] = {}
+    total_start_time = time.time()
+    token_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
     # Execute nodes in order
     node_sequence = [
         ("analyze_question", nodes.analyze_question_node),
@@ -215,6 +221,9 @@ async def stream_query_simple(
     ]
 
     for node_name, node_func in node_sequence:
+        # Record start time
+        node_start_time = time.time()
+
         # Yield node start
         yield _sse_event("node_start", {
             "node": node_name,
@@ -227,12 +236,31 @@ async def stream_query_simple(
             output = node_func(state)
             state.update(output)
 
-            # Yield node complete
+            # Record end time and calculate duration
+            node_end_time = time.time()
+            duration_ms = round((node_end_time - node_start_time) * 1000, 1)
+            node_timings[node_name] = {
+                "start": node_start_time,
+                "end": node_end_time,
+                "duration_ms": duration_ms,
+            }
+
+            # Extract token usage from sql_generation output (if available)
+            if node_name == "sql_generation" and output:
+                if "token_usage" in output:
+                    tu = output["token_usage"]
+                    if isinstance(tu, dict):
+                        token_usage["prompt_tokens"] += tu.get("prompt_tokens", 0)
+                        token_usage["completion_tokens"] += tu.get("completion_tokens", 0)
+                        token_usage["total_tokens"] += tu.get("total_tokens", 0)
+
+            # Yield node complete with timing
             yield _sse_event("node_complete", {
                 "node": node_name,
                 "label": NODE_LABELS.get(node_name, node_name),
                 "status": "completed",
                 "output": _serialize_output(output),
+                "duration_ms": duration_ms,
             })
 
             # Check for retry after sql_execution
@@ -249,6 +277,7 @@ async def stream_query_simple(
                         ("sql_generation", nodes.sql_generation_node),
                         ("sql_execution", nodes.sql_execution_node),
                     ]:
+                        retry_start = time.time()
                         yield _sse_event("node_start", {
                             "node": retry_node,
                             "label": NODE_LABELS.get(retry_node, retry_node),
@@ -256,21 +285,40 @@ async def stream_query_simple(
                         })
                         retry_output = retry_func(state)
                         state.update(retry_output)
+                        retry_end = time.time()
+                        retry_duration = round((retry_end - retry_start) * 1000, 1)
+
+                        # Accumulate token usage for retry
+                        if retry_node == "sql_generation" and retry_output:
+                            if "token_usage" in retry_output:
+                                tu = retry_output["token_usage"]
+                                if isinstance(tu, dict):
+                                    token_usage["prompt_tokens"] += tu.get("prompt_tokens", 0)
+                                    token_usage["completion_tokens"] += tu.get("completion_tokens", 0)
+                                    token_usage["total_tokens"] += tu.get("total_tokens", 0)
+
                         yield _sse_event("node_complete", {
                             "node": retry_node,
                             "label": NODE_LABELS.get(retry_node, retry_node),
                             "status": "completed" if not state.get("execution_error") else "error",
                             "output": _serialize_output(retry_output),
+                            "duration_ms": retry_duration,
                         })
 
         except Exception as e:
+            node_end_time = time.time()
+            duration_ms = round((node_end_time - node_start_time) * 1000, 1)
             yield _sse_event("node_error", {
                 "node": node_name,
                 "label": NODE_LABELS.get(node_name, node_name),
                 "status": "error",
                 "error": str(e),
+                "duration_ms": duration_ms,
             })
             break
+
+    # Calculate total execution time
+    total_duration_ms = round((time.time() - total_start_time) * 1000, 1)
 
     # Yield final result
     result = state.get("result") or {}
@@ -304,4 +352,7 @@ async def stream_query_simple(
         "attempt": int(state.get("attempt", 1)),
         "execution_error": state.get("execution_error") or None,
         "session_id": actual_session_id,
+        "node_timings": node_timings,
+        "total_duration_ms": total_duration_ms,
+        "token_usage": token_usage,
     })

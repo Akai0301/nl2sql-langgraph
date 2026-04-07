@@ -121,7 +121,7 @@ INSERT INTO dim_channel(channel_code, channel_name, channel_type, platform) VALU
 -- ============================================
 
 -- 2025年10月数据
-INSERT INTO fact_orders(order_id, order_date, order_time, customer_code, product_code, region_code, channel_code, quantity, unit_price, order_amount, discount_amount, actual_amount, profit_amount, order_status) VALUES
+INSERT INTO fact_orders(order_id, order_date, order_time, customer_id, product_code, region_code, channel_id, quantity, unit_price, order_amount, discount_amount, actual_amount, profit_amount, order_status) VALUES
 100001, '2025-10-01', '2025-10-01 10:30:00', 1, 'P001', 'HD-SH-01', 1, 1, 8999.00, 8999.00, 200.00, 8799.00, 1800.00, 'completed'),
 (100002, '2025-10-01', '2025-10-01 14:20:00', 2, 'P005', 'HB-BJ-01', 2, 1, 6999.00, 6999.00, 500.00, 6499.00, 1300.00, 'completed'),
 (100003, '2025-10-02', '2025-10-02 09:15:00', 3, 'P101', 'HN-GD-GZ', 3, 2, 4990.00, 9980.00, 300.00, 9680.00, 1940.00, 'completed'),

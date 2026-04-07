@@ -34,6 +34,23 @@ export interface QueryResult {
   rows: unknown[][]
   attempt: number
   executionError: string | null
+  nodeTimings?: Record<string, NodeTiming>
+  totalDurationMs?: number
+  tokenUsage?: TokenUsage
+}
+
+// Node timing info
+export interface NodeTiming {
+  start?: number
+  end?: number
+  duration_ms: number
+}
+
+// Token usage info
+export interface TokenUsage {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
 }
 
 // SSE event types
@@ -60,6 +77,7 @@ export interface SSENodeCompleteData {
   label: string
   status: 'completed'
   output: Record<string, unknown>
+  duration_ms?: number  // 节点执行时间（毫秒）
 }
 
 export interface SSENodeErrorData {
@@ -147,6 +165,7 @@ export interface StepState {
   output?: Record<string, unknown>
   error?: string
   expanded?: boolean
+  durationMs?: number  // 节点执行时间（毫秒）
 }
 
 // Simplified step definitions for UI

@@ -84,6 +84,17 @@
           >
             重新回答
           </el-button>
+          <!-- Stats display -->
+          <div class="message-stats">
+            <span v-if="totalDuration" class="stat-item">
+              <el-icon><Timer /></el-icon>
+              {{ totalDuration }}
+            </span>
+            <span v-if="tokenCount" class="stat-item">
+              <el-icon><Coin /></el-icon>
+              {{ tokenCount }} tokens
+            </span>
+          </div>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
         </div>
         <div v-else class="message-time">{{ formatTime(message.timestamp) }}</div>
@@ -93,8 +104,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { User, Monitor, CopyDocument, RefreshRight } from '@element-plus/icons-vue'
+import { ref, computed } from 'vue'
+import { User, Monitor, CopyDocument, RefreshRight, Timer, Coin } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { ConversationMessage } from '@/types'
 import StepProgressBar from './StepProgressBar.vue'
@@ -112,6 +123,24 @@ const emit = defineEmits<{
 
 const activeTab = ref('table')
 const isRetrying = ref(false)
+
+// Format total duration
+const totalDuration = computed(() => {
+  const ms = props.message.result?.totalDurationMs
+  if (!ms) return null
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  const minutes = Math.floor(ms / 60000)
+  const seconds = Math.round((ms % 60000) / 1000)
+  return `${minutes}m${seconds}s`
+})
+
+// Format token count
+const tokenCount = computed(() => {
+  const usage = props.message.result?.tokenUsage
+  if (!usage || usage.total_tokens === 0) return null
+  return usage.total_tokens
+})
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp)
@@ -149,9 +178,6 @@ function handleRetry() {
 <style scoped>
 .message-card {
   margin-bottom: 24px;
-  max-width: 900px;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .user-message,
@@ -256,6 +282,26 @@ function handleRetry() {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid #e5e7eb;
+}
+
+.message-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  margin-left: 12px;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.stat-item .el-icon {
+  font-size: 14px;
 }
 
 .message-footer .message-time {

@@ -1,5 +1,5 @@
 <template>
-  <div class="query-view h-full flex">
+  <div class="query-view">
     <!-- 左侧：导航 + 历史记录 -->
     <QuerySidebar
       :history="store.history"
@@ -12,9 +12,9 @@
     />
 
     <!-- 右侧：消息流 + 输入框 -->
-    <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
+    <div class="query-main">
       <!-- 消息流区域 -->
-      <div class="flex-1 overflow-auto" ref="messageContainer">
+      <div class="message-container" ref="messageContainer">
         <!-- 空状态 -->
         <div v-if="store.conversations.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400">
           <el-icon :size="64"><Document /></el-icon>
@@ -34,7 +34,7 @@
         </div>
 
         <!-- 消息列表 -->
-        <div v-else class="max-w-4xl mx-auto py-6 px-4 space-y-6">
+        <div v-else class="py-6 px-4 space-y-6">
           <MessageCard
             v-for="msg in store.conversations"
             :key="msg.id"
@@ -44,7 +44,7 @@
         </div>
 
         <!-- 加载指示器 -->
-        <div v-if="store.isExecuting && store.conversations.length > 0" class="max-w-4xl mx-auto pb-6 px-4">
+        <div v-if="store.isExecuting && store.conversations.length > 0" class="pb-6 px-4">
           <div class="bg-white rounded-lg shadow-sm p-4 flex items-center gap-3">
             <el-icon class="is-loading text-2xl text-blue-500"><Loading /></el-icon>
             <div>
@@ -59,12 +59,12 @@
         </div>
       </div>
 
-      <!-- 底部输入框 -->
-      <div class="border-t bg-white p-4">
-        <div class="max-w-4xl mx-auto">
-          <!-- 数据源选择器 -->
-          <div class="flex items-center gap-2 mb-3">
-            <el-icon class="text-gray-400"><Database /></el-icon>
+      <!-- 底部输入区域 -->
+      <div class="input-area">
+        <!-- 数据源选择器 - 独立区域 -->
+        <div class="datasource-section">
+          <div class="flex items-center gap-2">
+            <el-icon class="text-gray-400"><DataAnalysis /></el-icon>
             <span class="text-sm text-gray-500">当前数据源：</span>
             <el-select
               v-model="currentDatasourceId"
@@ -88,7 +88,10 @@
               {{ settingsStore.datasourceMessage }}
             </span>
           </div>
-          <!-- 输入框 -->
+        </div>
+
+        <!-- 输入框 - 独立区域 -->
+        <div class="input-wrapper">
           <div class="flex gap-3 items-end">
             <div class="flex-1 relative">
               <el-input
@@ -132,7 +135,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick, watch } from 'vue'
-import { Document, Loading, Promotion, Database } from '@element-plus/icons-vue'
+import { Document, Loading, Promotion, DataAnalysis } from '@element-plus/icons-vue'
 import { useQueryStore } from '@/stores/queryStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import QuerySidebar from './components/QuerySidebar.vue'
@@ -253,7 +256,39 @@ watch(() => store.conversations.length, () => {
 
 <style scoped>
 .query-view {
+  display: flex;
+  height: 100%;
+  width: 100%;
   background: #f5f7fa;
+}
+
+.query-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: #f5f7fa;
+}
+
+.message-container {
+  flex: 1;
+  overflow: auto;
+}
+
+.input-area {
+  border-top: 1px solid #e5e7eb;
+  background: white;
+}
+
+.datasource-section {
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.input-wrapper {
+  padding: 16px;
 }
 
 .el-textarea__inner {

@@ -7,6 +7,9 @@ import type {
   KnowledgeType,
   APIResponse,
   TestConnectionResult,
+  LearningProgress,
+  SchemaCache,
+  TableSchema,
 } from '@/types/settings'
 
 const API_BASE = ''
@@ -179,5 +182,96 @@ export async function importKnowledge(dsId: number, items: Partial<KnowledgeConf
     body: JSON.stringify({ items }),
   })
   if (!response.ok) throw new Error('Failed to import knowledge')
+  return response.json()
+}
+
+// ============ Schema 学习 API（Phase 5 新增）============
+
+/**
+ * 触发数据源 Schema 学习
+ */
+export async function triggerSchemaLearning(dsId: number): Promise<{ success: boolean; task_id: number; status: string; message: string }> {
+  const response = await fetch(`${API_BASE}/settings/datasource/${dsId}/learn`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to trigger learning')
+  }
+  return response.json()
+}
+
+/**
+ * 查询学习进度
+ */
+export async function getLearningProgress(taskId: number): Promise<LearningProgress> {
+  const response = await fetch(`${API_BASE}/settings/learning/${taskId}`)
+  if (!response.ok) throw new Error('Failed to fetch learning progress')
+  return response.json()
+}
+
+/**
+ * 列出学习任务
+ */
+export async function listLearningTasks(datasourceId?: number): Promise<{ items: LearningProgress[] }> {
+  const params = datasourceId ? `?datasource_id=${datasourceId}` : ''
+  const response = await fetch(`${API_BASE}/settings/learning/tasks${params}`)
+  if (!response.ok) throw new Error('Failed to fetch learning tasks')
+  return response.json()
+}
+
+/**
+ * 获取 Schema 缓存
+ */
+export async function getSchemaCache(dsId: number): Promise<SchemaCache | null> {
+  const response = await fetch(`${API_BASE}/settings/datasource/${dsId}/schema`)
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error('Failed to fetch schema cache')
+  return response.json()
+}
+
+/**
+ * 获取表列表（从 Schema 缓存）
+ */
+export async function getSchemaTables(dsId: number): Promise<{ items: TableSchema[]; total: number }> {
+  const response = await fetch(`${API_BASE}/settings/datasource/${dsId}/schema/tables`)
+  if (!response.ok) throw new Error('Failed to fetch schema tables')
+  return response.json()
+}
+
+/**
+ * 获取单表 Schema
+ */
+export async function getTableSchema(dsId: number, tableName: string): Promise<TableSchema> {
+  const response = await fetch(`${API_BASE}/settings/datasource/${dsId}/schema/tables/${encodeURIComponent(tableName)}`)
+  if (!response.ok) throw new Error('Failed to fetch table schema')
+  return response.json()
+}
+
+/**
+ * 清空 Schema 缓存
+ */
+export async function clearSchemaCache(dsId: number): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE}/settings/datasource/${dsId}/schema/cache`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to clear schema cache')
+  }
+  return response.json()
+}
+
+/**
+ * 清空并重新学习 Schema
+ */
+export async function relearnSchema(dsId: number): Promise<{ success: boolean; task_id?: number; message: string }> {
+  const response = await fetch(`${API_BASE}/settings/datasource/${dsId}/schema/relearn`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to relearn schema')
+  }
   return response.json()
 }
