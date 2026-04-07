@@ -11,6 +11,7 @@ from .prompt_templates import (
     METADATA_ANALYSIS_HUMAN,
     METADATA_ANALYSIS_SYSTEM,
     SQL_GENERATION_HUMAN,
+    SQL_GENERATION_MSCHEMA_SECTION,
     SQL_GENERATION_SYSTEM,
 )
 from .state import NL2SQLState
@@ -18,6 +19,7 @@ from .tools import (
     execute_sql,
     fetch_knowledge_hits,
     fetch_metadata_hits,
+    fetch_metadata_hits_with_cache,
     fetch_metrics_hits,
     get_postgres_dsn,
 )
@@ -113,11 +115,30 @@ def metrics_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
 
 
 def metadata_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
+    """
+    元数据检索节点：优先从 schema_cache 获取 M-Schema，回退到 lake_table_metadata。
+
+    Phase 4.1 增强：
+    - 如果指定了 datasource_id，优先从 MySQL schema_cache 获取完整的 M-Schema
+    - 同时保留 lake_table_metadata 的检索结果（保持兼容）
+    - 返回 mschema_context 用于后续 SQL 生成
+    """
     metrics_hits = state.get("metrics_hits", []) or []
     metric_names = [m.get("metric_name") for m in metrics_hits if m.get("metric_name")]
     # 用 metric_names 优先，其次才用 keywords 做 topic 推断
     topic_or_metrics = [str(x) for x in metric_names] + [str(k) for k in state.get("keywords", [])]
-    return {"metadata_hits": fetch_metadata_hits(topic_or_metrics)}
+    datasource_id = state.get("datasource_id")
+
+    # 使用增强的检索函数（带缓存）
+    metadata_hits, mschema_context = fetch_metadata_hits_with_cache(
+        topic_or_metrics,
+        datasource_id=datasource_id,
+    )
+
+    return {
+        "metadata_hits": metadata_hits,
+        "mschema_context": mschema_context,
+    }
 
 
 def merge_context_node(state: NL2SQLState) -> dict[str, Any]:
@@ -275,6 +296,11 @@ def _mock_sql_generation(state: NL2SQLState) -> SQLGenerationOutput:
             select_parts.append("c.member_level AS member_level")
             group_parts.append("c.member_level")
             order_parts.append("member_level")
+        else:
+            # 默认按客户姓名分组（如"消费前10的客户"）
+            select_parts.append("c.customer_name AS customer_name")
+            group_parts.append("c.customer_name")
+            order_parts.append("customer_name")
 
     # 渠道维度
     group_by_channel = any(k in q for k in ["渠道", "线上", "线下", "平台", "app", "小程序", "门店"])
@@ -351,7 +377,7 @@ def _mock_sql_generation(state: NL2SQLState) -> SQLGenerationOutput:
     if "dim_product" in join_dims:
         sql += "\nJOIN dim_product p ON f.product_code = p.product_code"
     if "dim_customer" in join_dims:
-        sql += "\nJOIN dim_customer c ON f.customer_code = c.customer_code"
+        sql += "\nJOIN dim_customer c ON f.customer_id = c.customer_id"
     if "dim_channel" in join_dims:
         sql += "\nJOIN dim_channel ch ON f.channel_id = ch.channel_id"
 
@@ -390,6 +416,9 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
     candidate_tables = state.get("candidate_tables", []) or []
     selected_tables = state.get("selected_tables", []) or candidate_tables
 
+    # Phase 4.2: 获取 M-Schema 上下文
+    mschema_context = state.get("mschema_context", "") or ""
+
     if use_mock:
         out = _mock_sql_generation(state)
         return {"generated_sql": out.sql, "execution_error": "", "selected_tables": out.selected_tables}
@@ -415,6 +444,11 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
         ]
     )
 
+    # Phase 4.2: 构建 M-Schema 部分（如果有缓存）
+    mschema_section = ""
+    if mschema_context:
+        mschema_section = SQL_GENERATION_MSCHEMA_SECTION.format(mschema_context=mschema_context)
+
     system_prompt = SQL_GENERATION_SYSTEM + f"\n当前重试 attempt={attempt}/{max_attempts}。"
     human_prompt = SQL_GENERATION_HUMAN.format(
         question=question,
@@ -422,6 +456,7 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
         knowledge_context=knowledge_context or "(空)",
         metrics_context=metrics_context or "(空)",
         metadata_context=metadata_context or "(空)",
+        mschema_section=mschema_section,
         candidate_tables=candidate_tables or [],
     )
 
@@ -448,8 +483,29 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": human_prompt},
     ]
+
+    # Invoke LLM and get structured output
     out = structured.invoke(messages)
-    return {"generated_sql": out.sql, "execution_error": "", "selected_tables": out.selected_tables}
+
+    # Extract token usage from response if available
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    # Note: structured output may not expose usage_metadata directly
+    # Try to get it from the raw response if available
+    if hasattr(out, '__pydantic_extra__') and out.__pydantic_extra__:
+        usage = out.__pydantic_extra__.get('usage_metadata', {})
+        if usage:
+            token_usage = {
+                "prompt_tokens": usage.get('input_tokens', 0),
+                "completion_tokens": usage.get('output_tokens', 0),
+                "total_tokens": usage.get('total_tokens', 0),
+            }
+
+    return {
+        "generated_sql": out.sql,
+        "execution_error": "",
+        "selected_tables": out.selected_tables,
+        "token_usage": token_usage,
+    }
 
 
 def sql_execution_node(state: NL2SQLState) -> dict[str, Any]:

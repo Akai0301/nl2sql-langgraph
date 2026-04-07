@@ -16,6 +16,9 @@ class NL2SQLState(TypedDict, total=False):
     metrics_hits: list[dict[str, Any]]
     metadata_hits: list[dict[str, Any]]
 
+    # M-Schema context (Phase 4.1 新增)
+    mschema_context: str  # 从 schema_cache 获取的 M-Schema 格式化上下文
+
     # Converged by analysis
     candidate_tables: list[str]
     selected_tables: list[str]
