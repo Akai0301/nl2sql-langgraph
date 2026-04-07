@@ -65,10 +65,10 @@ CREATE TABLE fact_orders (
   order_id BIGINT PRIMARY KEY,
   order_date DATE NOT NULL,
   order_time TIMESTAMP,           -- 下单时间
-  customer_code TEXT,             -- 使用 customer_code 而非 customer_id
-  product_code TEXT,              -- 使用 product_code 而非 product_id
-  region_code TEXT,               -- 使用 region_code 而非 region_id
-  channel_code TEXT,              -- 使用 channel_code 而非 channel_id
+  customer_id INTEGER,            -- 客户ID（关联 dim_customer.customer_id）
+  product_code TEXT,              -- 产品编码
+  region_code TEXT,               -- 地区编码
+  channel_id INTEGER,             -- 渠道ID（关联 dim_channel.channel_id）
   quantity INTEGER NOT NULL DEFAULT 1,
   unit_price NUMERIC(10,2) NOT NULL,
   order_amount NUMERIC(18,2) NOT NULL,    -- 订单金额
@@ -79,10 +79,10 @@ CREATE TABLE fact_orders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_fact_orders_date ON fact_orders(order_date);
-CREATE INDEX IF NOT EXISTS idx_fact_orders_customer ON fact_orders(customer_code);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_customer ON fact_orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_fact_orders_product ON fact_orders(product_code);
 CREATE INDEX IF NOT EXISTS idx_fact_orders_region ON fact_orders(region_code);
-CREATE INDEX IF NOT EXISTS idx_fact_orders_channel ON fact_orders(channel_code);
+CREATE INDEX IF NOT EXISTS idx_fact_orders_channel ON fact_orders(channel_id);
 
 -- ============================================
 -- 知识库和元数据表
@@ -121,5 +121,41 @@ CREATE TABLE IF NOT EXISTS lake_table_metadata (
   dimension_region_key TEXT,
   measure_column TEXT,
   measure_sql_expression TEXT NOT NULL,
-  grain TEXT
+  grain TEXT,
+  -- 扩展字段（Schema 学习）
+  table_type VARCHAR(20),           -- 表类型：fact/dimension/other
+  table_comment TEXT,               -- 表注释
+  field_type VARCHAR(20),           -- 字段类型：DateTime/Enum/Code/Text/Measure
+  is_dimension BOOLEAN DEFAULT TRUE, -- 是否为维度字段
+  date_granularity VARCHAR(20),     -- 时间颗粒度：YEAR/MONTH/DAY/HOUR/MINUTE/SECOND
+  examples JSONB,                   -- 示例值列表
+  llm_description TEXT              -- LLM 生成的中文描述
 );
+
+-- 字段级元数据表（新增，用于 Schema 学习结果存储）
+CREATE TABLE IF NOT EXISTS field_metadata (
+  id SERIAL PRIMARY KEY,
+  table_name TEXT NOT NULL,
+  column_name TEXT NOT NULL,
+  data_type TEXT NOT NULL,
+  is_primary_key BOOLEAN DEFAULT FALSE,
+  is_nullable BOOLEAN DEFAULT TRUE,
+  column_default TEXT,
+  column_comment TEXT,
+  -- Schema 学习扩展
+  field_category VARCHAR(20),       -- DateTime/Enum/Code/Text/Measure
+  dim_or_meas VARCHAR(20),          -- Dimension/Measure
+  date_granularity VARCHAR(20),     -- 时间颗粒度
+  examples JSONB,                   -- 示例值列表
+  llm_description TEXT,             -- LLM 描述
+  -- 业务语义
+  business_term TEXT,               -- 业务术语
+  synonym TEXT,                     -- 同义词
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE(table_name, column_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_field_metadata_table ON field_metadata(table_name);
+CREATE INDEX IF NOT EXISTS idx_field_metadata_category ON field_metadata(field_category);

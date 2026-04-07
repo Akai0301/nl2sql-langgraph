@@ -101,3 +101,41 @@ CREATE TABLE IF NOT EXISTS knowledge_config (
     INDEX idx_kb_type (kb_type),
     FOREIGN KEY (datasource_id) REFERENCES datasource_config(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='知识库配置表';
+
+-- Schema 缓存表（存储 M-Schema JSON）
+CREATE TABLE IF NOT EXISTS schema_cache (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    datasource_id BIGINT NOT NULL COMMENT '数据源ID',
+    schema_json JSON NOT NULL COMMENT 'M-Schema JSON 格式',
+    mschema_text TEXT COMMENT 'M-Schema 文本格式（用于 Prompt）',
+    table_count INT DEFAULT 0 COMMENT '表数量',
+    field_count INT DEFAULT 0 COMMENT '字段总数',
+    learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '学习时间',
+    learning_status VARCHAR(20) DEFAULT 'completed' COMMENT '学习状态：pending/running/completed/failed',
+    learning_error TEXT COMMENT '学习错误信息',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uk_datasource (datasource_id),
+    FOREIGN KEY (datasource_id) REFERENCES datasource_config(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Schema缓存表';
+
+-- 学习任务表（用于后台异步学习）
+CREATE TABLE IF NOT EXISTS learning_task (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    datasource_id BIGINT NOT NULL COMMENT '数据源ID',
+    task_type VARCHAR(20) DEFAULT 'schema_learning' COMMENT '任务类型',
+    status VARCHAR(20) DEFAULT 'pending' COMMENT '状态：pending/running/completed/failed',
+    progress INT DEFAULT 0 COMMENT '进度 0-100',
+    current_step VARCHAR(100) COMMENT '当前步骤',
+    message TEXT COMMENT '提示信息',
+    error_message TEXT COMMENT '错误信息',
+    started_at TIMESTAMP NULL COMMENT '开始时间',
+    completed_at TIMESTAMP NULL COMMENT '完成时间',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    INDEX idx_datasource (datasource_id),
+    INDEX idx_status (status),
+    FOREIGN KEY (datasource_id) REFERENCES datasource_config(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='学习任务表';
