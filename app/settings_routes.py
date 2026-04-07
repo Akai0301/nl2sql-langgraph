@@ -611,3 +611,221 @@ def api_import_knowledge(ds_id: int, req: KnowledgeImportRequest):
         items=req.items,
     )
     return result
+
+
+# ============ Schema 学习 API ============
+
+@router.post("/datasource/{ds_id}/learn")
+def api_trigger_schema_learning(ds_id: int):
+    """
+    触发数据库 Schema 学习
+
+    流程：
+    1. 验证数据源存在且可连接
+    2. 执行学习任务
+    3. 返回任务 ID 供查询进度
+    """
+    from .learning_service import LearningService
+
+    # 验证数据源
+    config = get_datasource_by_id(ds_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="数据源不存在")
+
+    # 测试连接
+    test_result = test_datasource_connection(config)
+    if not test_result.get("success"):
+        raise HTTPException(status_code=400, detail=f"数据源连接失败: {test_result.get('message')}")
+
+    # 开始学习
+    try:
+        service = LearningService(ds_id)
+        progress = service.start_learning()
+
+        return {
+            "success": True,
+            "task_id": progress.task_id,
+            "status": progress.status,
+            "message": progress.message,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"学习失败: {str(e)}")
+
+
+@router.get("/learning/{task_id}")
+def api_get_learning_progress(task_id: int):
+    """查询 Schema 学习进度"""
+    from .learning_service import get_learning_progress
+
+    progress = get_learning_progress(task_id)
+    if not progress:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    return {
+        "task_id": progress.task_id,
+        "datasource_id": progress.datasource_id,
+        "status": progress.status,
+        "progress": progress.progress,
+        "current_step": progress.current_step,
+        "message": progress.message,
+        "error": progress.error,
+    }
+
+
+@router.get("/learning/tasks")
+def api_list_learning_tasks(
+    datasource_id: Optional[int] = Query(None),
+):
+    """列出学习任务"""
+    from .learning_service import list_learning_tasks
+
+    tasks = list_learning_tasks(datasource_id)
+    return {
+        "items": [
+            {
+                "task_id": t.task_id,
+                "datasource_id": t.datasource_id,
+                "status": t.status,
+                "progress": t.progress,
+                "current_step": t.current_step,
+                "message": t.message,
+                "error": t.error,
+            }
+            for t in tasks
+        ],
+    }
+
+
+@router.get("/datasource/{ds_id}/schema")
+def api_get_schema_cache(ds_id: int):
+    """获取数据源的 Schema 缓存"""
+    from .learning_service import get_schema_cache
+
+    cache = get_schema_cache(ds_id)
+    if not cache:
+        raise HTTPException(status_code=404, detail="Schema 缓存不存在，请先执行学习")
+
+    return cache
+
+
+@router.get("/datasource/{ds_id}/schema/tables")
+def api_get_schema_tables(ds_id: int):
+    """获取数据源的表级 Schema 信息"""
+    from .learning_service import get_schema_cache
+
+    cache = get_schema_cache(ds_id)
+    if not cache:
+        raise HTTPException(status_code=404, detail="Schema 缓存不存在，请先执行学习")
+
+    schema_json = cache.get("schema_json", {})
+    tables = schema_json.get("tables", {})
+
+    return {
+        "items": [
+            {
+                "name": name,
+                "comment": info.get("comment"),
+                "table_type": info.get("table_type"),
+                "primary_keys": info.get("primary_keys", []),
+                "field_count": len(info.get("fields", {})),
+            }
+            for name, info in tables.items()
+        ],
+        "total": len(tables),
+    }
+
+
+@router.get("/datasource/{ds_id}/schema/tables/{table_name}")
+def api_get_table_schema(ds_id: int, table_name: str):
+    """获取单表的 Schema 信息"""
+    from .learning_service import get_schema_cache
+
+    cache = get_schema_cache(ds_id)
+    if not cache:
+        raise HTTPException(status_code=404, detail="Schema 缓存不存在，请先执行学习")
+
+    schema_json = cache.get("schema_json", {})
+    tables = schema_json.get("tables", {})
+
+    if table_name not in tables:
+        raise HTTPException(status_code=404, detail=f"表 {table_name} 不存在")
+
+    table_info = tables[table_name]
+
+    return {
+        "name": table_name,
+        "comment": table_info.get("comment"),
+        "table_type": table_info.get("table_type"),
+        "primary_keys": table_info.get("primary_keys", []),
+        "fields": [
+            {
+                "name": fname,
+                "type": finfo.get("type"),
+                "primary_key": finfo.get("primary_key"),
+                "nullable": finfo.get("nullable"),
+                "comment": finfo.get("comment"),
+                "category": finfo.get("category"),
+                "dim_or_meas": finfo.get("dim_or_meas"),
+                "date_min_gran": finfo.get("date_min_gran"),
+                "examples": finfo.get("examples", []),
+            }
+            for fname, finfo in table_info.get("fields", {}).items()
+        ],
+    }
+
+
+@router.delete("/datasource/{ds_id}/schema/cache")
+def api_clear_schema_cache(ds_id: int):
+    """
+    清空数据源的 Schema 缓存
+
+    删除 schema_cache 表中的记录，允许重新学习
+    """
+    from .mysql_tools import get_mysql_connection
+
+    conn = get_mysql_connection()
+    with conn.cursor() as cur:
+        # 检查是否存在
+        cur.execute("""
+            SELECT id FROM schema_cache WHERE datasource_id = %s
+        """, (ds_id,))
+        row = cur.fetchone()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Schema 缓存不存在")
+
+        # 删除缓存
+        cur.execute("""
+            DELETE FROM schema_cache WHERE datasource_id = %s
+        """, (ds_id,))
+        conn.commit()
+
+    return {"success": True, "message": "Schema 缓存已清空"}
+
+
+@router.post("/datasource/{ds_id}/schema/relearn")
+def api_relearn_schema(ds_id: int):
+    """
+    清空并重新学习 Schema
+
+    先清空现有缓存，然后启动新的学习任务
+    """
+    from .mysql_tools import get_mysql_connection
+    from .learning_service import trigger_schema_learning
+
+    # 清空现有缓存
+    conn = get_mysql_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            DELETE FROM schema_cache WHERE datasource_id = %s
+        """, (ds_id,))
+        conn.commit()
+
+    # 启动新的学习任务
+    result = trigger_schema_learning(ds_id)
+
+    return {
+        "success": result.get("success", False),
+        "task_id": result.get("task_id"),
+        "message": "已清空历史学习内容，正在重新学习",
+    }
