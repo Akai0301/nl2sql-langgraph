@@ -1,4 +1,4 @@
-import type { GraphStructure, QueryResult, HistoryListResponse, HistoryListParams, QueryHistory, DataSource, ActiveDataSourceResponse, DataSourceListResponse } from '@/types'
+import type { GraphStructure, QueryResult, HistoryListResponse, HistoryListParams, QueryHistory, ActiveDataSourceResponse, DataSourceListResponse } from '@/types'
 
 // Use relative path - Vite proxy will forward to backend
 const API_BASE = ''

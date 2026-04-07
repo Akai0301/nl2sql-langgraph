@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { GraphStructure, NodeState, QueryResult, QueryHistory, ConversationMessage, StepState, HistoryListParams } from '@/types'
+import type { GraphStructure, NodeState, QueryResult, QueryHistory, ConversationMessage, StepState, HistoryListParams, TokenUsage } from '@/types'
 import { createStreamingConnection, listHistory, toggleFavorite as apiToggleFavorite, deleteHistory as apiDeleteHistory, batchDeleteHistory, clearHistory as apiClearHistory } from '@/api/query'
 
 // Node label mapping
@@ -104,7 +104,7 @@ export const useQueryStore = defineStore('query', () => {
     }
   }
 
-  function updateNodeStatus(nodeId: string, status: NodeState['status'], output?: Record<string, unknown>, errorMsg?: string) {
+  function updateNodeStatus(nodeId: string, status: NodeState['status'], output?: Record<string, unknown>, errorMsg?: string, durationMs?: number) {
     const existing = nodeStates.value.get(nodeId)
     if (existing) {
       nodeStates.value.set(nodeId, {
@@ -123,6 +123,7 @@ export const useQueryStore = defineStore('query', () => {
       status,
       output,
       error: errorMsg,
+      durationMs,
     })
   }
 
@@ -199,8 +200,8 @@ export const useQueryStore = defineStore('query', () => {
               break
 
             case 'node_complete':
-              const completeData = data as { node: string; status: string; output?: Record<string, unknown> }
-              updateNodeStatus(completeData.node, 'completed', completeData.output)
+              const completeData = data as { node: string; status: string; output?: Record<string, unknown>; duration_ms?: number }
+              updateNodeStatus(completeData.node, 'completed', completeData.output, undefined, completeData.duration_ms)
               // Update assistant message steps
               updateAssistantMessage(assistantId, {
                 steps: [...orderedSteps.value],
@@ -208,8 +209,8 @@ export const useQueryStore = defineStore('query', () => {
               break
 
             case 'node_error':
-              const errorData = data as { node: string; label: string; error: string }
-              updateNodeStatus(errorData.node, 'error', undefined, errorData.error)
+              const errorData = data as { node: string; label: string; error: string; duration_ms?: number }
+              updateNodeStatus(errorData.node, 'error', undefined, errorData.error, errorData.duration_ms)
               updateAssistantMessage(assistantId, {
                 steps: [...orderedSteps.value],
                 error: errorData.error,
@@ -217,7 +218,7 @@ export const useQueryStore = defineStore('query', () => {
               break
 
             case 'result':
-              const resultData = data as QueryResult & { session_id?: number }
+              const resultData = data as QueryResult & { session_id?: number; node_timings?: Record<string, { duration_ms: number }>; total_duration_ms?: number; token_usage?: TokenUsage }
               result.value = {
                 question: resultData.question,
                 sql: resultData.sql,
@@ -225,6 +226,9 @@ export const useQueryStore = defineStore('query', () => {
                 rows: resultData.rows || [],
                 attempt: resultData.attempt || 1,
                 executionError: resultData.executionError || null,
+                nodeTimings: resultData.node_timings as Record<string, { duration_ms: number }> | undefined,
+                totalDurationMs: resultData.total_duration_ms,
+                tokenUsage: resultData.token_usage,
               }
               // Update session_id if returned
               if (resultData.session_id) {
@@ -233,7 +237,7 @@ export const useQueryStore = defineStore('query', () => {
               // Update assistant message with result
               updateAssistantMessage(assistantId, {
                 steps: [...orderedSteps.value],
-                result: result.value,
+                result: result.value ? { ...result.value } : undefined,
               })
               // Reload history after query completes
               loadHistory()
