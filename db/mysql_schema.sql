@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS schema_cache (
     datasource_id BIGINT NOT NULL COMMENT '数据源ID',
     schema_json JSON NOT NULL COMMENT 'M-Schema JSON 格式',
     mschema_text TEXT COMMENT 'M-Schema 文本格式（用于 Prompt）',
+    example_sqls JSON COMMENT '示例 SQL 列表（P4 自动生成）',
     table_count INT DEFAULT 0 COMMENT '表数量',
     field_count INT DEFAULT 0 COMMENT '字段总数',
     learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '学习时间',

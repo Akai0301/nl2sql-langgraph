@@ -3,13 +3,13 @@
   "hostname": "laptop-cch99buc",
   "model": "glm-5",
   "firstSeen": "2026-04-01T10:22:55.632Z",
-  "lastUpdated": "2026-04-07T01:27:56.134Z",
+  "lastUpdated": "2026-04-07T01:43:46.100Z",
   "stats": {
     "totalOperations": 113,
     "totalFilesEdited": 50,
-    "totalAiLines": 3786,
-    "totalCommits": 9,
-    "totalAiLinesDeleted": 121
+    "totalAiLines": 5426,
+    "totalCommits": 10,
+    "totalAiLinesDeleted": 136
   },
   "pendingFiles": [
     {
@@ -26,75 +26,6 @@
       "timestamp": "2026-04-03T08:43:06.430Z",
       "lastModified": "2026-04-03T08:46:15.463Z",
       "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/schema_engine.py",
-      "tool": "Edit",
-      "operations": 4,
-      "timestamp": "2026-04-07T01:08:37.817Z",
-      "lastModified": "2026-04-07T01:09:53.446Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/learning_service.py",
-      "tool": "Edit",
-      "operations": 4,
-      "timestamp": "2026-04-07T01:10:25.746Z",
-      "lastModified": "2026-04-07T01:25:43.402Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/semantic_matcher.py",
-      "tool": "Write",
-      "operations": 1,
-      "timestamp": "2026-04-07T01:11:42.441Z",
-      "lastModified": "2026-04-07T01:11:42.441Z"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/tools.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T01:12:06.940Z",
-      "lastModified": "2026-04-07T01:26:20.408Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/nodes.py",
-      "tool": "Edit",
-      "operations": 9,
-      "timestamp": "2026-04-07T01:12:31.503Z",
-      "lastModified": "2026-04-07T01:27:56.133Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/state.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T01:12:49.522Z",
-      "lastModified": "2026-04-07T01:26:38.617Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/prompt_templates.py",
-      "tool": "Edit",
-      "operations": 3,
-      "timestamp": "2026-04-07T01:13:05.718Z",
-      "lastModified": "2026-04-07T01:27:23.641Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/sql_validator.py",
-      "tool": "Write",
-      "operations": 1,
-      "timestamp": "2026-04-07T01:22:46.692Z",
-      "lastModified": "2026-04-07T01:22:46.692Z"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/example_sql_generator.py",
-      "tool": "Write",
-      "operations": 1,
-      "timestamp": "2026-04-07T01:24:23.811Z",
-      "lastModified": "2026-04-07T01:24:23.811Z"
     },
     {
       "path": "d:/01_AlCoding_Test/nl2sql-langgraph/db/mysql_schema.sql",
