@@ -86,15 +86,15 @@ class LearningService:
         """执行学习流程"""
         self._update_task_status("running", progress=0, step="初始化", message="开始学习")
 
-        # Step 1: 提取 Schema (20%)
-        self._update_task_status("running", progress=10, step="提取 Schema", message="正在提取数据库结构")
+        # Step 1: 提取 Schema (15%)
+        self._update_task_status("running", progress=5, step="提取 Schema", message="正在提取数据库结构")
         engine = SchemaEngine(self.config)
         schema = engine.extract_schema(include_examples=True, example_limit=5)
 
-        self._update_task_status("running", progress=20, step="提取 Schema", message=f"已提取 {len(schema.tables)} 张表")
+        self._update_task_status("running", progress=15, step="提取 Schema", message=f"已提取 {len(schema.tables)} 张表")
 
-        # Step 2: 分类字段 (40%)
-        self._update_task_status("running", progress=30, step="分类字段", message="正在分类字段")
+        # Step 2: 分类字段 (30%)
+        self._update_task_status("running", progress=20, step="分类字段", message="正在分类字段")
         classifier = SchemaClassifier(self.llm_config)
         schema = classifier.classify_schema(schema)
 
@@ -102,25 +102,35 @@ class LearningService:
         for table_name, table in schema.tables.items():
             table.table_type = classifier.infer_table_type(table)
 
-        self._update_task_status("running", progress=40, step="分类字段", message="字段分类完成")
+        self._update_task_status("running", progress=30, step="分类字段", message="字段分类完成")
 
-        # Step 3: 生成描述 (70%)
+        # Step 2.5: 提取字段统计 (45%) - P0 新增
+        self._update_task_status("running", progress=35, step="提取统计", message="正在提取字段统计信息")
+        schema = self._extract_field_statistics(engine, schema)
+        self._update_task_status("running", progress=45, step="提取统计", message="字段统计提取完成")
+
+        # Step 3: 生成描述 (65%)
         self._update_task_status("running", progress=50, step="生成描述", message="正在生成语义描述")
         descriptor = SchemaDescriptor(self.llm_config)
         schema = descriptor.generate_descriptions(schema)
 
-        self._update_task_status("running", progress=70, step="生成描述", message="语义描述生成完成")
+        self._update_task_status("running", progress=65, step="生成描述", message="语义描述生成完成")
 
         # Step 4: 构建知识库 (85%)
-        self._update_task_status("running", progress=75, step="构建知识库", message="正在构建知识库")
+        self._update_task_status("running", progress=70, step="构建知识库", message="正在构建知识库")
         knowledge_entries = descriptor.generate_knowledge_entries(schema)
         self._populate_knowledge_base(knowledge_entries, schema)
 
         self._update_task_status("running", progress=85, step="构建知识库", message="知识库构建完成")
 
+        # Step 4.5: 生成示例 SQL (90%) - P4 新增
+        self._update_task_status("running", progress=87, step="生成示例", message="正在生成示例 SQL")
+        example_sqls = self._generate_example_sqls(schema)
+        self._update_task_status("running", progress=90, step="生成示例", message=f"已生成 {len(example_sqls)} 个示例 SQL")
+
         # Step 5: 缓存结果 (100%)
-        self._update_task_status("running", progress=90, step="缓存结果", message="正在缓存 Schema")
-        self._save_schema_cache(schema, engine)
+        self._update_task_status("running", progress=92, step="缓存结果", message="正在缓存 Schema")
+        self._save_schema_cache(schema, engine, example_sqls)
 
         self._update_task_status("completed", progress=100, step="完成", message="学习完成")
 
@@ -132,6 +142,67 @@ class LearningService:
             current_step="完成",
             message=f"学习完成，共处理 {len(schema.tables)} 张表",
         )
+
+    def _extract_field_statistics(
+        self,
+        engine: SchemaEngine,
+        schema: SchemaUnderstanding,
+    ) -> SchemaUnderstanding:
+        """
+        提取字段统计信息
+
+        为每个字段提取：
+        - 数值/时间字段的 min/max
+        - 不同值数量
+        - NULL 值数量
+        - Enum 字段的值分布
+
+        Args:
+            engine: SchemaEngine 实例
+            schema: Schema 理解结果
+
+        Returns:
+            更新后的 Schema 理解结果
+        """
+        for table_name, table_info in schema.tables.items():
+            for field_name, field_info in table_info.fields.items():
+                try:
+                    stats = engine.extract_field_statistics(
+                        table_name=table_name,
+                        field_name=field_name,
+                        field_type=field_info.type,
+                        category=field_info.category,
+                    )
+                    field_info.statistics = stats
+                except Exception:
+                    # 统计提取失败不影响整体流程
+                    pass
+
+        return schema
+
+    def _generate_example_sqls(self, schema: SchemaUnderstanding) -> list[dict[str, Any]]:
+        """
+        生成示例 SQL
+
+        Args:
+            schema: Schema 理解结果
+
+        Returns:
+            示例 SQL 列表
+        """
+        from .example_sql_generator import generate_example_sql_for_schema
+
+        examples = generate_example_sql_for_schema(schema, dialect=self.config.ds_type)
+
+        return [
+            {
+                "question": ex.question,
+                "sql": ex.sql,
+                "category": ex.category,
+                "description": ex.description,
+            }
+            for ex in examples
+        ]
 
     def _create_task(self) -> int:
         """创建学习任务"""
@@ -235,6 +306,7 @@ class LearningService:
         self,
         schema: SchemaUnderstanding,
         engine: SchemaEngine,
+        example_sqls: list[dict[str, Any]] | None = None,
     ) -> None:
         """
         保存 Schema 缓存到 MySQL
@@ -242,6 +314,7 @@ class LearningService:
         Args:
             schema: Schema 理解结果
             engine: Schema 引擎
+            example_sqls: 示例 SQL 列表（P4 新增）
         """
         schema_json = engine.to_mschema_json(schema)
         schema_text = engine.to_mschema_text(schema)
@@ -253,11 +326,12 @@ class LearningService:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO schema_cache (
-                    datasource_id, schema_json, mschema_text, table_count, field_count, learning_status
-                ) VALUES (%s, %s, %s, %s, %s, %s)
+                    datasource_id, schema_json, mschema_text, example_sqls, table_count, field_count, learning_status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     schema_json = VALUES(schema_json),
                     mschema_text = VALUES(mschema_text),
+                    example_sqls = VALUES(example_sqls),
                     table_count = VALUES(table_count),
                     field_count = VALUES(field_count),
                     learning_status = VALUES(learning_status),
@@ -266,6 +340,7 @@ class LearningService:
                 self.datasource_id,
                 json.dumps(schema_json, ensure_ascii=False),
                 schema_text,
+                json.dumps(example_sqls, ensure_ascii=False) if example_sqls else None,
                 len(schema.tables),
                 field_count,
                 "completed",

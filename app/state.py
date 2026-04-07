@@ -19,6 +19,12 @@ class NL2SQLState(TypedDict, total=False):
     # M-Schema context (Phase 4.1 新增)
     mschema_context: str  # 从 schema_cache 获取的 M-Schema 格式化上下文
 
+    # Semantic context (P2 新增)
+    semantic_context: str  # 语义匹配的字段上下文
+
+    # Example SQLs context (P4 新增)
+    example_sqls_context: str  # 示例 SQL 上下文
+
     # Converged by analysis
     candidate_tables: list[str]
     selected_tables: list[str]

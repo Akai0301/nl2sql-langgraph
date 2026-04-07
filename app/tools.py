@@ -348,3 +348,173 @@ def fetch_metadata_hits_with_cache(
 
     return metadata_hits, mschema_context
 
+
+def semantic_field_matching(
+    question: str,
+    datasource_id: int,
+    top_k: int = 10,
+) -> tuple[list[dict[str, Any]], str]:
+    """
+    语义化字段匹配：使用 LLM 理解问题与字段的语义关联。
+
+    这是 P2 优化：替代简单的关键词匹配，用 LLM 理解语义。
+
+    Args:
+        question: 用户问题
+        datasource_id: 数据源 ID
+        top_k: 返回 top K 个最相关字段
+
+    Returns:
+        (matched_fields, reasoning)
+        - matched_fields: 匹配的字段列表，包含 table_name, field_name, relevance_score
+        - reasoning: LLM 推理过程
+    """
+    # 获取 Schema 缓存
+    cache = fetch_schema_cache(datasource_id)
+    if not cache or not cache.schema_json:
+        return [], "Schema 缓存不存在"
+
+    # 构建候选字段列表
+    candidate_fields = []
+    for table_name, table_info in cache.schema_json.get("tables", {}).items():
+        for field_name, field_info in table_info.get("fields", {}).items():
+            candidate_fields.append({
+                "table_name": table_name,
+                "field_name": field_name,
+                "type": field_info.get("type", "unknown"),
+                "comment": field_info.get("comment"),
+                "category": field_info.get("category"),
+                "dim_or_meas": field_info.get("dim_or_meas"),
+            })
+
+    if not candidate_fields:
+        return [], "没有候选字段"
+
+    # 调用语义匹配服务
+    try:
+        from .semantic_matcher import SemanticMatcher
+        matcher = SemanticMatcher()
+        result = matcher.full_match(
+            question=question,
+            schema_fields=candidate_fields,
+            schema_tables=[
+                {
+                    "name": name,
+                    "comment": info.get("comment"),
+                    "table_type": info.get("table_type"),
+                }
+                for name, info in cache.schema_json.get("tables", {}).items()
+            ],
+        )
+
+        # 转换结果
+        matched_fields = [
+            {
+                "table_name": f.table_name,
+                "field_name": f.field_name,
+                "type": f.field_type,
+                "comment": f.comment,
+                "relevance_score": f.relevance_score,
+                "match_reason": f.match_reason,
+            }
+            for f in result.matched_fields[:top_k]
+        ]
+
+        return matched_fields, result.reasoning
+
+    except ImportError:
+        # 降级：返回空列表
+        return [], "语义匹配服务不可用"
+
+
+def format_semantic_context(
+    matched_fields: list[dict[str, Any]],
+    reasoning: str,
+) -> str:
+    """
+    格式化语义匹配结果为 LLM Prompt 上下文
+
+    Args:
+        matched_fields: 匹配的字段列表
+        reasoning: 推理过程
+
+    Returns:
+        格式化的上下文字符串
+    """
+    if not matched_fields:
+        return ""
+
+    lines = ["## 语义匹配的字段（LLM 推理）", ""]
+
+    for f in matched_fields:
+        lines.append(f"### {f['table_name']}.{f['field_name']}")
+        lines.append(f"- 类型: {f.get('type', 'unknown')}")
+        if f.get("comment"):
+            lines.append(f"- 注释: {f['comment']}")
+        lines.append(f"- 相关性: {f.get('relevance_score', 0):.2f}")
+        lines.append(f"- 匹配原因: {f.get('match_reason', '')}")
+        lines.append("")
+
+    if reasoning:
+        lines.append(f"**推理过程**: {reasoning}")
+
+    return "\n".join(lines)
+
+
+def fetch_example_sqls(datasource_id: int) -> list[dict[str, Any]]:
+    """
+    获取数据源的示例 SQL
+
+    Args:
+        datasource_id: 数据源 ID
+
+    Returns:
+        示例 SQL 列表
+    """
+    from .mysql_tools import get_mysql_connection
+
+    conn = get_mysql_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT example_sqls
+            FROM schema_cache
+            WHERE datasource_id = %s AND learning_status = 'completed'
+        """, (datasource_id,))
+        row = cur.fetchone()
+
+        if row and row["example_sqls"]:
+            example_sqls = row["example_sqls"]
+            if isinstance(example_sqls, str):
+                import json
+                example_sqls = json.loads(example_sqls)
+            return example_sqls
+
+    return []
+
+
+def format_example_sqls_context(example_sqls: list[dict[str, Any]]) -> str:
+    """
+    格式化示例 SQL 为 LLM Prompt 上下文
+
+    Args:
+        example_sqls: 示例 SQL 列表
+
+    Returns:
+        格式化的上下文字符串
+    """
+    if not example_sqls:
+        return ""
+
+    lines = ["## 参考示例 SQL", ""]
+
+    for i, example in enumerate(example_sqls[:5], 1):  # 最多展示 5 个
+        lines.append(f"### 示例 {i}: {example.get('question', '')}")
+        lines.append("```sql")
+        lines.append(example.get("sql", ""))
+        lines.append("```")
+        if example.get("description"):
+            lines.append(f"// {example['description']}")
+        lines.append("")
+
+    return "\n".join(lines)
+

@@ -22,6 +22,17 @@ from .config_service import DataSourceConfig
 
 
 @dataclass
+class FieldStatistics:
+    """字段统计信息"""
+    min_value: Optional[str] = None  # 最小值（数值/日期）
+    max_value: Optional[str] = None  # 最大值（数值/日期）
+    distinct_count: int = 0  # 不同值数量
+    null_count: int = 0  # NULL 值数量
+    total_count: int = 0  # 总行数
+    value_distribution: dict[str, int] = field(default_factory=dict)  # 值分布（Enum 字段）
+
+
+@dataclass
 class FieldInfo:
     """字段信息模型"""
     name: str
@@ -35,6 +46,8 @@ class FieldInfo:
     category: Optional[str] = None  # DateTime/Enum/Code/Text/Measure
     dim_or_meas: Optional[str] = None  # Dimension/Measure
     date_min_gran: Optional[str] = None  # YEAR/MONTH/DAY/HOUR/MINUTE/SECOND
+    # 字段统计（P0 新增）
+    statistics: Optional[FieldStatistics] = None
 
 
 @dataclass
@@ -496,6 +509,249 @@ class SchemaEngine:
         # 只允许字母、数字、下划线
         return re.sub(r"[^a-zA-Z0-9_]", "", identifier)
 
+    def extract_field_statistics(
+        self,
+        table_name: str,
+        field_name: str,
+        field_type: str,
+        category: Optional[str] = None,
+    ) -> FieldStatistics:
+        """
+        提取字段统计信息
+
+        Args:
+            table_name: 表名
+            field_name: 字段名
+            field_type: 字段类型
+            category: 字段分类（DateTime/Enum/Code/Text/Measure）
+
+        Returns:
+            FieldStatistics 对象
+        """
+        if self.ds_type == "postgresql":
+            return self._extract_postgresql_field_stats(table_name, field_name, field_type, category)
+        elif self.ds_type == "mysql":
+            return self._extract_mysql_field_stats(table_name, field_name, field_type, category)
+        elif self.ds_type == "sqlite":
+            return self._extract_sqlite_field_stats(table_name, field_name, field_type, category)
+        else:
+            return FieldStatistics()
+
+    def _extract_postgresql_field_stats(
+        self,
+        table_name: str,
+        field_name: str,
+        field_type: str,
+        category: Optional[str],
+    ) -> FieldStatistics:
+        """提取 PostgreSQL 字段统计"""
+        dsn = self.config.get_dsn()
+        safe_table = self._sanitize_identifier(table_name)
+        safe_column = self._sanitize_identifier(field_name)
+
+        stats = FieldStatistics()
+
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor() as cur:
+                # 基础统计：总行数、NULL 数、不同值数
+                cur.execute(f"""
+                    SELECT
+                        COUNT(*) as total,
+                        COUNT({safe_column}) as non_null,
+                        COUNT(DISTINCT {safe_column}) as distinct_count
+                    FROM {safe_table}
+                """)
+                row = cur.fetchone()
+                stats.total_count = row[0]
+                stats.null_count = row[0] - row[1]
+                stats.distinct_count = row[2]
+
+                # 根据类型提取不同的统计
+                type_upper = field_type.upper()
+
+                # 数值类型：min/max
+                if any(t in type_upper for t in ["INT", "DECIMAL", "FLOAT", "DOUBLE", "NUMERIC", "REAL"]):
+                    cur.execute(f"""
+                        SELECT
+                            MIN({safe_column})::text,
+                            MAX({safe_column})::text
+                        FROM {safe_table}
+                        WHERE {safe_column} IS NOT NULL
+                    """)
+                    row = cur.fetchone()
+                    stats.min_value = row[0]
+                    stats.max_value = row[1]
+
+                # 时间类型：min/max
+                elif any(t in type_upper for t in ["DATE", "TIME", "TIMESTAMP"]):
+                    cur.execute(f"""
+                        SELECT
+                            MIN({safe_column})::text,
+                            MAX({safe_column})::text
+                        FROM {safe_table}
+                        WHERE {safe_column} IS NOT NULL
+                    """)
+                    row = cur.fetchone()
+                    stats.min_value = row[0]
+                    stats.max_value = row[1]
+
+                # Enum 类型：值分布
+                elif category == "Enum" or stats.distinct_count <= 20:
+                    if stats.distinct_count <= 50 and stats.distinct_count > 0:
+                        cur.execute(f"""
+                            SELECT {safe_column}, COUNT(*) as cnt
+                            FROM {safe_table}
+                            WHERE {safe_column} IS NOT NULL
+                            GROUP BY {safe_column}
+                            ORDER BY cnt DESC
+                            LIMIT 20
+                        """)
+                        for row in cur.fetchall():
+                            stats.value_distribution[str(row[0])] = row[1]
+
+        return stats
+
+    def _extract_mysql_field_stats(
+        self,
+        table_name: str,
+        field_name: str,
+        field_type: str,
+        category: Optional[str],
+    ) -> FieldStatistics:
+        """提取 MySQL 字段统计"""
+        params = self._parse_mysql_config()
+        safe_table = self._sanitize_identifier(table_name)
+        safe_column = self._sanitize_identifier(field_name)
+        database = params["database"]
+
+        stats = FieldStatistics()
+
+        conn = pymysql.connect(**params, cursorclass=DictCursor)
+        try:
+            with conn.cursor() as cur:
+                # 基础统计
+                cur.execute(f"""
+                    SELECT
+                        COUNT(*) as total,
+                        COUNT({safe_column}) as non_null,
+                        COUNT(DISTINCT {safe_column}) as distinct_count
+                    FROM {database}.{safe_table}
+                """)
+                row = cur.fetchone()
+                stats.total_count = row["total"]
+                stats.null_count = row["total"] - row["non_null"]
+                stats.distinct_count = row["distinct_count"]
+
+                type_upper = field_type.upper()
+
+                # 数值类型
+                if any(t in type_upper for t in ["INT", "DECIMAL", "FLOAT", "DOUBLE", "NUMERIC"]):
+                    cur.execute(f"""
+                        SELECT
+                            MIN({safe_column}),
+                            MAX({safe_column})
+                        FROM {database}.{safe_table}
+                        WHERE {safe_column} IS NOT NULL
+                    """)
+                    row = cur.fetchone()
+                    stats.min_value = str(row["MIN({safe_column})"]) if row["MIN({safe_column})"] else None
+                    stats.max_value = str(row["MAX({safe_column})"]) if row["MAX({safe_column})"] else None
+
+                # 时间类型
+                elif any(t in type_upper for t in ["DATE", "TIME", "DATETIME", "TIMESTAMP"]):
+                    cur.execute(f"""
+                        SELECT
+                            MIN({safe_column}),
+                            MAX({safe_column})
+                        FROM {database}.{safe_table}
+                        WHERE {safe_column} IS NOT NULL
+                    """)
+                    row = cur.fetchone()
+                    stats.min_value = str(row[f"MIN({safe_column})"]) if row[f"MIN({safe_column})"] else None
+                    stats.max_value = str(row[f"MAX({safe_column})"]) if row[f"MAX({safe_column})"] else None
+
+                # Enum 类型
+                elif category == "Enum" or stats.distinct_count <= 20:
+                    if stats.distinct_count <= 50 and stats.distinct_count > 0:
+                        cur.execute(f"""
+                            SELECT {safe_column}, COUNT(*) as cnt
+                            FROM {database}.{safe_table}
+                            WHERE {safe_column} IS NOT NULL
+                            GROUP BY {safe_column}
+                            ORDER BY cnt DESC
+                            LIMIT 20
+                        """)
+                        for row in cur.fetchall():
+                            stats.value_distribution[str(row[safe_column])] = row["cnt"]
+
+        finally:
+            conn.close()
+
+        return stats
+
+    def _extract_sqlite_field_stats(
+        self,
+        table_name: str,
+        field_name: str,
+        field_type: str,
+        category: Optional[str],
+    ) -> FieldStatistics:
+        """提取 SQLite 字段统计"""
+        db_path = self.config.database or ":memory:"
+        safe_table = self._sanitize_identifier(table_name)
+        safe_column = self._sanitize_identifier(field_name)
+
+        stats = FieldStatistics()
+
+        conn = sqlite3.connect(db_path)
+        try:
+            cur = conn.cursor()
+
+            # 基础统计
+            cur.execute(f"""
+                SELECT
+                    COUNT(*) as total,
+                    COUNT({safe_column}) as non_null,
+                    COUNT(DISTINCT {safe_column}) as distinct_count
+                FROM {safe_table}
+            """)
+            row = cur.fetchone()
+            stats.total_count = row[0]
+            stats.null_count = row[0] - row[1]
+            stats.distinct_count = row[2]
+
+            type_upper = field_type.upper()
+
+            # 数值类型
+            if "INT" in type_upper or "REAL" in type_upper or "NUMERIC" in type_upper:
+                cur.execute(f"""
+                    SELECT MIN({safe_column}), MAX({safe_column})
+                    FROM {safe_table}
+                    WHERE {safe_column} IS NOT NULL
+                """)
+                row = cur.fetchone()
+                stats.min_value = str(row[0]) if row[0] is not None else None
+                stats.max_value = str(row[1]) if row[1] is not None else None
+
+            # Enum 类型
+            elif category == "Enum" or stats.distinct_count <= 20:
+                if stats.distinct_count <= 50 and stats.distinct_count > 0:
+                    cur.execute(f"""
+                        SELECT {safe_column}, COUNT(*) as cnt
+                        FROM {safe_table}
+                        WHERE {safe_column} IS NOT NULL
+                        GROUP BY {safe_column}
+                        ORDER BY cnt DESC
+                        LIMIT 20
+                    """)
+                    for row in cur.fetchall():
+                        stats.value_distribution[str(row[0])] = row[1]
+
+        finally:
+            conn.close()
+
+        return stats
+
     def to_mschema_json(self, schema: SchemaUnderstanding) -> dict[str, Any]:
         """
         将 Schema 转换为 M-Schema JSON 格式
@@ -529,6 +785,16 @@ class SchemaEngine:
                     "dim_or_meas": field_info.dim_or_meas,
                     "date_min_gran": field_info.date_min_gran,
                 }
+                # 添加统计信息（P0 新增）
+                if field_info.statistics:
+                    field_data["statistics"] = {
+                        "min_value": field_info.statistics.min_value,
+                        "max_value": field_info.statistics.max_value,
+                        "distinct_count": field_info.statistics.distinct_count,
+                        "null_count": field_info.statistics.null_count,
+                        "total_count": field_info.statistics.total_count,
+                        "value_distribution": field_info.statistics.value_distribution,
+                    }
                 table_data["fields"][field_name] = field_data
 
             mschema["tables"][table_name] = table_data
@@ -564,6 +830,29 @@ class SchemaEngine:
                 if field_info.examples:
                     examples_str = ", ".join(str(e) for e in field_info.examples[:3])
                     lines.append(f"    示例值: {examples_str}")
+
+                # 添加统计信息（P0 新增）
+                if field_info.statistics:
+                    stats = field_info.statistics
+                    stats_parts = []
+
+                    # 数值/时间范围
+                    if stats.min_value and stats.max_value:
+                        stats_parts.append(f"范围: {stats.min_value} ~ {stats.max_value}")
+
+                    # 不同值数量
+                    if stats.distinct_count > 0:
+                        fill_rate = (stats.total_count - stats.null_count) / stats.total_count * 100 if stats.total_count > 0 else 0
+                        stats_parts.append(f"不同值: {stats.distinct_count}个, 填充率: {fill_rate:.1f}%")
+
+                    # Enum 值分布
+                    if stats.value_distribution and len(stats.value_distribution) > 0:
+                        top_values = sorted(stats.value_distribution.items(), key=lambda x: x[1], reverse=True)[:5]
+                        dist_str = ", ".join(f"{k}({v})" for k, v in top_values)
+                        stats_parts.append(f"值分布: {dist_str}")
+
+                    if stats_parts:
+                        lines.append(f"    统计: {'; '.join(stats_parts)}")
 
             lines.append("")
 

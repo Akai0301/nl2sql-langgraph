@@ -37,6 +37,10 @@ SQL_GENERATION_HUMAN = """问题：
 
 {mschema_section}
 
+{semantic_section}
+
+{example_sqls_section}
+
 候选表：
 {candidate_tables}
 """
@@ -44,6 +48,16 @@ SQL_GENERATION_HUMAN = """问题：
 # M-Schema 部分的模板（动态拼接）
 SQL_GENERATION_MSCHEMA_SECTION = """**M-Schema 数据库结构（优先参考）**：
 {mschema_context}
+"""
+
+# 语义匹配部分的模板（P2 新增）
+SQL_GENERATION_SEMANTIC_SECTION = """**语义匹配的字段（LLM 推理，高度相关）**：
+{semantic_context}
+"""
+
+# 示例 SQL 部分的模板（P4 新增）
+SQL_GENERATION_EXAMPLE_SECTION = """**参考示例 SQL（基于 Schema 自动生成）**：
+{example_sqls_context}
 """
 
 METADATA_ANALYSIS_SYSTEM = """你是企业级 NL2SQL 的元数据分析器。
