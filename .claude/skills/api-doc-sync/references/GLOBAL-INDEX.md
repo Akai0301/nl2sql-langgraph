@@ -9,7 +9,7 @@
 
 | 模块 | 文档 | 路径前缀 | 说明 |
 |------|------|---------|------|
-| 系统设置 | [settings-api.md](./settings-api.md) | `/settings/` | AI配置、数据源配置、知识库管理 |
+| 系统设置 | [settings-api.md](./settings-api.md) | `/settings/` | AI配置、数据源配置、Schema学习、知识库管理 |
 
 ---
 
@@ -22,3 +22,14 @@
 | 获取当前激活数据源 | GET | `/settings/datasource/active` | 获取当前用于问数的数据源 |
 | 列出所有数据源 | GET | `/settings/datasource` | 获取数据源列表 |
 | 切换数据源 | POST | `/settings/datasource/{id}/activate-query` | 设置问数目标数据源 |
+
+### Schema 学习相关
+
+| 接口 | 方法 | 路径 | 说明 |
+|------|------|------|------|
+| 触发 Schema 学习 | POST | `/settings/datasource/{id}/learn` | 自动提取表结构、分类字段、生成描述 |
+| 查询学习进度 | GET | `/settings/learning/{taskId}` | 查询学习任务进度 |
+| 列出学习任务 | GET | `/settings/learning/tasks` | 列出学习任务记录 |
+| 获取 Schema 缓存 | GET | `/settings/datasource/{id}/schema` | 获取 M-Schema JSON |
+| 获取表列表 | GET | `/settings/datasource/{id}/schema/tables` | 获取数据源的表列表 |
+| 获取表 Schema | GET | `/settings/datasource/{id}/schema/tables/{tableName}` | 获取单表详细 Schema |
