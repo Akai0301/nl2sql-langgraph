@@ -1,22 +1,17 @@
 <template>
-  <div class="app-container h-screen flex">
-    <!-- 左侧主导航（紧凑图标模式） -->
-    <SidebarNav v-if="!isQueryPage" />
+  <div class="app-container h-screen flex flex-col">
+    <!-- 顶部栏 -->
+    <TopBar />
 
-    <!-- 路由视图 -->
-    <div class="main-content flex-1 flex flex-col overflow-hidden">
+    <!-- 主内容区 -->
+    <div class="main-content flex-1 flex overflow-hidden">
       <router-view />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import SidebarNav from '@/views/components/SidebarNav.vue'
-
-const route = useRoute()
-const isQueryPage = computed(() => route.path === '/')
+import TopBar from '@/views/components/TopBar.vue'
 </script>
 
 <style>
@@ -32,6 +27,10 @@ html, body, #app {
 }
 
 .app-container {
+  background: #f5f7fa;
+}
+
+.main-content {
   background: #f5f7fa;
 }
 </style>

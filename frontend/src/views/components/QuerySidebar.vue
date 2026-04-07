@@ -1,13 +1,5 @@
 <template>
   <div class="query-sidebar h-full flex flex-col bg-gray-900 text-white">
-    <!-- Logo -->
-    <div class="p-4 border-b border-gray-700">
-      <div class="flex items-center gap-2">
-        <el-icon :size="24" class="text-blue-400"><DataAnalysis /></el-icon>
-        <span class="font-semibold text-lg">NL2SQL</span>
-      </div>
-    </div>
-
     <!-- 新建对话 -->
     <div class="p-3 border-b border-gray-700">
       <button class="w-full btn-new-chat" @click="$emit('newChat')">
@@ -15,27 +7,6 @@
         新建对话
       </button>
     </div>
-
-    <!-- 导航菜单 -->
-    <nav class="p-3 border-b border-gray-700">
-      <router-link
-        to="/"
-        class="nav-item-horizontal"
-        :class="{ active: $route.path === '/' }"
-      >
-        <el-icon><ChatLineRound /></el-icon>
-        <span>智能问数</span>
-      </router-link>
-
-      <router-link
-        to="/settings"
-        class="nav-item-horizontal"
-        :class="{ active: $route.path.startsWith('/settings') }"
-      >
-        <el-icon><Setting /></el-icon>
-        <span>系统设置</span>
-      </router-link>
-    </nav>
 
     <!-- 搜索 -->
     <div class="p-3 border-b border-gray-700">
@@ -123,7 +94,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { DataAnalysis, Plus, ChatLineRound, Setting, Search, Star, StarFilled, ChatDotRound, Delete } from '@element-plus/icons-vue'
+import { Plus, Search, Star, StarFilled, ChatDotRound, Delete } from '@element-plus/icons-vue'
 import type { QueryHistory } from '@/types'
 
 const props = defineProps<{
@@ -158,6 +129,9 @@ const filteredHistory = computed(() => {
 .query-sidebar {
   width: 260px;
   min-width: 260px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .btn-new-chat {
@@ -178,34 +152,6 @@ const filteredHistory = computed(() => {
   border-color: #3b82f6;
   color: #60a5fa;
   background: rgba(59, 130, 246, 0.1);
-}
-
-.nav-item-horizontal {
-  display: flex;
-  align-items: center;
-  padding: 10px 12px;
-  border-radius: 8px;
-  color: #9ca3af;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-bottom: 4px;
-  text-decoration: none;
-}
-
-.nav-item-horizontal:hover {
-  background: #374151;
-  color: white;
-}
-
-.nav-item-horizontal.active {
-  background: #3b82f6;
-  color: white;
-}
-
-.nav-item-horizontal .el-icon {
-  font-size: 18px;
-  margin-right: 10px;
 }
 
 .history-item {
