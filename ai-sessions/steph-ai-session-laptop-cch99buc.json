@@ -3,13 +3,13 @@
   "hostname": "laptop-cch99buc",
   "model": "glm-5",
   "firstSeen": "2026-04-01T10:22:55.632Z",
-  "lastUpdated": "2026-04-11T13:08:27.886Z",
+  "lastUpdated": "2026-04-11T13:14:50.691Z",
   "stats": {
     "totalOperations": 297,
     "totalFilesEdited": 112,
-    "totalAiLines": 5878,
-    "totalCommits": 16,
-    "totalAiLinesDeleted": 373
+    "totalAiLines": 7310,
+    "totalCommits": 17,
+    "totalAiLinesDeleted": 390
   },
   "pendingFiles": [
     {
@@ -40,14 +40,6 @@
       "operations": 1,
       "timestamp": "2026-04-07T01:46:45.898Z",
       "lastModified": "2026-04-07T01:46:45.898Z"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/prompt_templates.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T01:47:46.166Z",
-      "lastModified": "2026-04-07T06:16:54.788Z",
-      "lastTool": "Edit"
     },
     {
       "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/agent_nodes.py",
@@ -95,20 +87,6 @@
       "lastTool": "Edit"
     },
     {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/views/SettingsView.vue",
-      "tool": "Edit",
-      "operations": 1,
-      "timestamp": "2026-04-07T06:48:28.892Z",
-      "lastModified": "2026-04-07T06:48:28.892Z"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/App.vue",
-      "tool": "Edit",
-      "operations": 1,
-      "timestamp": "2026-04-07T06:59:56.331Z",
-      "lastModified": "2026-04-07T06:59:56.331Z"
-    },
-    {
       "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/agent/routes.py",
       "tool": "Edit",
       "operations": 2,
@@ -141,70 +119,6 @@
       "lastTool": "Edit"
     },
     {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/routes/history.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T08:34:43.221Z",
-      "lastModified": "2026-04-07T10:10:28.305Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/routes/settings.py",
-      "tool": "Edit",
-      "operations": 3,
-      "timestamp": "2026-04-07T08:34:55.962Z",
-      "lastModified": "2026-04-08T13:12:02.188Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/schema/classifier.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T08:35:38.313Z",
-      "lastModified": "2026-04-07T10:07:45.000Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/schema/descriptor.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T08:36:00.040Z",
-      "lastModified": "2026-04-07T10:08:17.919Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/schema/example_sql_generator.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T08:36:22.912Z",
-      "lastModified": "2026-04-07T10:09:00.966Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/schema/engine.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T08:36:38.915Z",
-      "lastModified": "2026-04-07T10:08:36.376Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/schema/knowledge_manager.py",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-07T08:37:00.669Z",
-      "lastModified": "2026-04-07T10:09:15.508Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "d:/01_AlCoding_Test/nl2sql-langgraph/app/schema/learning_service.py",
-      "tool": "Edit",
-      "operations": 3,
-      "timestamp": "2026-04-07T08:37:28.481Z",
-      "lastModified": "2026-04-07T10:09:57.839Z",
-      "lastTool": "Edit"
-    },
-    {
       "path": "d:/01_AlCoding_Test/nl2sql-langgraph/docs/architecture/mschema-xiyan-application.md",
       "tool": "Write",
       "operations": 1,
@@ -212,103 +126,11 @@
       "lastModified": "2026-04-07T10:51:47.965Z"
     },
     {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/app/routes/settings.py",
-      "tool": "Edit",
-      "operations": 12,
-      "timestamp": "2026-04-08T13:19:55.006Z",
-      "lastModified": "2026-04-09T07:37:10.166Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/api/settings.ts",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-08T13:20:18.463Z",
-      "lastModified": "2026-04-09T03:45:47.912Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/views/settings/AISettings.vue",
-      "tool": "Edit",
-      "operations": 7,
-      "timestamp": "2026-04-08T13:20:36.333Z",
-      "lastModified": "2026-04-09T08:14:37.645Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/types/settings.ts",
-      "tool": "Edit",
-      "operations": 1,
-      "timestamp": "2026-04-09T03:45:36.592Z",
-      "lastModified": "2026-04-09T03:45:36.592Z"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/db/vector_schema.sql",
-      "tool": "Write",
-      "operations": 1,
-      "timestamp": "2026-04-11T10:11:28.629Z",
-      "lastModified": "2026-04-11T10:11:28.629Z"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/app/core/embedding_service.py",
-      "tool": "Write",
-      "operations": 2,
-      "timestamp": "2026-04-11T10:12:37.030Z",
-      "lastModified": "2026-04-11T11:17:13.365Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/scripts/init_embeddings.py",
-      "tool": "Write",
-      "operations": 5,
-      "timestamp": "2026-04-11T10:24:59.589Z",
-      "lastModified": "2026-04-11T11:17:40.818Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/requirements.txt",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-11T11:13:19.792Z",
-      "lastModified": "2026-04-11T11:34:04.816Z",
-      "lastTool": "Edit"
-    },
-    {
       "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/vite.config.ts",
       "tool": "Edit",
       "operations": 1,
       "timestamp": "2026-04-11T11:23:44.911Z",
       "lastModified": "2026-04-11T11:23:44.911Z"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/views/components/step-details/RetrievalList.vue",
-      "tool": "Edit",
-      "operations": 1,
-      "timestamp": "2026-04-11T12:10:23.101Z",
-      "lastModified": "2026-04-11T12:10:23.101Z"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/views/components/step-details/RetrievalStepDetail.vue",
-      "tool": "Edit",
-      "operations": 1,
-      "timestamp": "2026-04-11T12:11:15.845Z",
-      "lastModified": "2026-04-11T12:11:15.845Z"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/views/components/FlowGraph.vue",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-11T12:18:07.629Z",
-      "lastModified": "2026-04-11T12:42:53.927Z",
-      "lastTool": "Edit"
-    },
-    {
-      "path": "D:/01_AlCoding_Test/nl2sql-langgraph/frontend/src/stores/queryStore.ts",
-      "tool": "Edit",
-      "operations": 2,
-      "timestamp": "2026-04-11T12:18:18.344Z",
-      "lastModified": "2026-04-11T12:42:54.652Z",
-      "lastTool": "Edit"
     }
   ]
 }
