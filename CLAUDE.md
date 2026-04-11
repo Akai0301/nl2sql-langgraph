@@ -15,6 +15,15 @@ copy .env.example .env
 psql $env:POSTGRES_DSN -f .\db\schema.sql
 psql $env:POSTGRES_DSN -f .\db\seed.sql
 
+# 初始化 pgvector 向量字段（用于混合检索）
+psql $env:POSTGRES_DSN -f .\db\vector_schema.sql
+
+# 初始化 Embedding 数据（使用通义千问 API）
+python scripts/init_embeddings.py
+
+# 仅统计待处理数量（不执行 embedding 生成）
+python scripts/init_embeddings.py --dry-run
+
 # 初始化 MySQL 表结构（用于平台数据：历史记录等）
 mysql -h $env:MYSQL_HOST -u $env:MYSQL_USER -p$env:MYSQL_PASSWORD < .\db\mysql_schema.sql
 
@@ -53,6 +62,33 @@ cd frontend && npm run build
 | `OPENAI_MODEL` | 模型名称 | `gpt-4o-mini` |
 | `SQL_MAX_ROWS` | 返回最大行数 | `200` |
 | `SQL_MAX_ATTEMPTS` | SQL 执行失败重试次数 | `2` |
+| `QWEN_API_KEY` | 通义千问 API Key（用于 Embedding） | - |
+| `QWEN_API_BASE` | 通义千问 API 地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `QWEN_EMBEDDING_MODEL` | Embedding 模型名称 | `text-embedding-v3` |
+| `QWEN_EMBEDDING_DIM` | Embedding 向量维度 | `1024` |
+
+### AI 配置优先级
+
+配置读取顺序：**MySQL 配置表 > .env 文件 > 硬编码默认值**
+
+| 配置来源 | 说明 | 配置位置 |
+|---------|------|---------|
+| MySQL 配置表 | 最高优先级，支持多配置切换 | `ai_model_config` 表 |
+| .env 文件 | 默认配置，无需数据库 | 项目根目录 `.env` |
+| 硬编码默认值 | 兜底配置 | `config_service.py` |
+
+### 思考模式模型适配
+
+某些 LLM 端点（如 DashScope Anthropic 兼容端点）默认启用 **thinking mode**，不支持 `tool_choice` 参数。
+
+| 模型类型 | 调用方式 | 说明 |
+|---------|---------|------|
+| 思考模式 | `llm.invoke()` + JSON prompt + 手动解析 | 检测 `thinking_mode=True` 或 DashScope 端点 |
+| 非思考模式 | `with_structured_output()` | 标准 OpenAI/Anthropic API |
+
+**关键文件**：
+- `app/core/config_service.py`: AIModelConfig 增加 `thinking_mode` 属性
+- `app/pipeline/nodes.py`: sql_generation_node 条件分支处理
 
 ## 项目结构
 
@@ -68,12 +104,26 @@ nl2sql-langgraph/
 │   ├── mysql_tools.py            # MySQL 数据库工具（历史记录 CRUD）
 │   ├── history_routes.py         # 历史记录 API 路由
 │   ├── prompt_templates.py       # LLM SQL 生成的系统/用户提示词
-│   └── streaming.py              # SSE 流式执行支持
+│   ├── streaming.py              # SSE 流式执行支持
+│   ├── agent_state.py            # ReAct Agent 状态定义
+│   ├── agent_tools.py            # ReAct Agent 工具函数（8 个 LangChain Tool）
+│   ├── agent_nodes.py            # ReAct Agent 节点函数（think/tools/reflect）
+│   ├── agent_graph.py            # ReAct Agent LangGraph 构建
+│   ├── agent_routes.py           # ReAct Agent API 路由
+│   ├── semantic_matcher.py       # 语义字段匹配服务
+│   ├── sql_validator.py          # SQL 验证与自动修正
+│   ├── example_sql_generator.py  # 示例 SQL 生成器
+│   ├── schema_engine.py          # Schema 提取引擎
+│   ├── learning_service.py       # Schema 学习服务
+│   └── settings_routes.py        # 设置管理 API 路由
 ├── db/                           # 数据库脚本
 │   ├── __init__.py
 │   ├── schema.sql                # PostgreSQL 表结构定义
 │   ├── seed.sql                  # PostgreSQL 种子数据
+│   ├── vector_schema.sql         # pgvector 向量字段定义
 │   └── mysql_schema.sql          # MySQL 平台数据库表结构
+├── scripts/                      # 脚本目录
+│   └── init_embeddings.py        # Embedding 初始化脚本
 ├── frontend/                     # Vue 3 前端
 │   ├── src/
 │   │   ├── api/
@@ -114,42 +164,209 @@ nl2sql-langgraph/
 └── README.md
 ```
 
-## 架构：「梭子形」多 Agent NL2SQL 流水线
+## 架构：「梭子形」混合检索 NL2SQL 流水线
 
-基于 LangGraph 的自然语言转 SQL 系统，采用扇出/扇入（梭子形）架构：
+基于 LangGraph 的自然语言转 SQL 系统，采用扇出/扇入（梭子形）架构，支持**混合检索（LIKE + 向量 + RRF 融合）**：
 
 ```
-问题 → 分析器 → [并行检索] → 合并 → 元数据分析 → SQL生成 → SQL执行
-                      ↓
-          ┌───────────┼───────────┐
-          ↓           ↓           ↓
-     知识检索     指标检索     元数据检索
-          └───────────┼───────────┘
-                      ↓
-                上下文合并
+问题 → 分析器 → 向量生成 → [并行混合检索] → 合并 → 元数据分析 → SQL生成 → SQL执行
+                           ↓
+         ┌─────────────────┼─────────────────┐
+         ↓                 ↓                 ↓
+    知识检索(混合)     指标检索(混合)     元数据检索(混合)
+         │                 │                 │
+         ├─ LIKE匹配       ├─ LIKE匹配       ├─ LIKE匹配
+         ├─ 向量检索       ├─ 向量检索       ├─ 向量检索
+         │  (多embedding)  │  (多embedding)  │  (多embedding)
+         └─ RRF融合        └─ RRF融合        └─ RRF融合
+         └─────────────────┼─────────────────┘
+                           ↓
+                上下文合并 → 选择表/JOIN → 生成SQL → 执行
+```
+
+### 混合检索核心机制
+
+#### 1. RRF（Reciprocal Rank Fusion）算法
+
+**公式**：`RRF_score(d) = Σ 1/(k + rank_i(d))`，其中 `k=60`
+
+| 参数 | 说明 |
+|------|------|
+| `k` | 平滑参数，默认 60 |
+| `rank_i(d)` | 文档 d 在第 i 个检索列表中的排名 |
+| `RRF_score` | 最终融合分数，越高越相关 |
+
+**算法特点**：
+- 无需分数归一化，直接基于排名融合
+- 对各检索系统权重平等，避免调参复杂度
+- 同时命中多路检索的结果分数叠加，提升召回
+
+#### 2. 多路检索并行执行
+
+| 检索方式 | 说明 | 优势 |
+|---------|------|------|
+| **LIKE 检索** | SQL `LIKE ANY (%keyword%)` 匹配 | 精确关键词命中，覆盖已知术语 |
+| **向量检索** | pgvector `embedding <=> query_vector` 余弦距离 | 语义相似度匹配，覆盖同义表述 |
+
+**向量检索多 Embedding 字段**：
+
+| 表名 | Embedding 字段 | 用途 |
+|------|---------------|------|
+| `enterprise_kb` | `keyword_embedding` | 关键词语义匹配 |
+| `enterprise_kb` | `business_embedding` | 业务含义语义匹配 |
+| `metrics_catalog` | `metric_embedding` | 指标名称语义匹配 |
+| `metrics_catalog` | `synonym_embedding` | 指标同义词语义匹配 |
+| `lake_table_metadata` | `topic_embedding` | 主题语义匹配 |
+| `lake_table_metadata` | `metric_embedding` | 指标语义匹配 |
+
+向量检索对每个表的多个 embedding 字段分别查询，结果合并去重（取最小 cosine_distance）。
+
+#### 3. 检索结果字段
+
+每条检索结果包含以下融合相关字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `rrf_score` | float | RRF 融合分数（越高越相关） |
+| `like_rank` | int/null | LIKE 检索排名（未命中为 null） |
+| `vector_rank` | int/null | 向量检索排名（未命中为 null） |
+| `cosine_distance` | float/null | 向量余弦距离（越小越相似） |
+| `cosine_similarity` | float/null | 余弦相似度 = 1 - cosine_distance |
+| `_retrieval_method` | string | 检索来源标记 |
+
+**`_retrieval_method` 标记值**：
+
+| 值 | 含义 | 触发条件 |
+|----|------|---------|
+| `"hybrid"` | LIKE + 向量融合命中 | `like_rank` 和 `vector_rank` 都不为 null |
+| `"like_only"` | 仅 LIKE 命中 | `like_rank` 不为 null，`vector_rank` 为 null |
+| `"vector_only"` | 仅向量命中 | `like_rank` 为 null，`vector_rank` 不为 null |
+
+#### 4. 混合检索函数
+
+| 函数 | 表名 | LIKE 条件 | Embedding 字段 |
+|------|------|----------|---------------|
+| `hybrid_knowledge_search()` | `enterprise_kb` | `keyword_synonyms`, `business_meaning` | `keyword_embedding`, `business_embedding` |
+| `hybrid_metrics_search()` | `metrics_catalog` | `metric_synonyms`, `metric_name` | `metric_embedding`, `synonym_embedding` |
+| `hybrid_metadata_search()` | `lake_table_metadata` | `topic`, `metric_name` | `topic_embedding`, `metric_embedding` |
+
+#### 5. 降级机制
+
+当 `QWEN_API_KEY` 未配置时：
+- `embedding_generation_node` 跳过向量生成
+- 检索退化为**纯 LIKE 模式**
+- `_retrieval_method` 全部为 `"like_only"`
+
+#### 6. 前端可视化
+
+检索结果在前端 `RetrievalStepDetail.vue` 和 `RetrievalList.vue` 中展示：
+- **混合状态徽章**：显示「混合检索已激活」
+- **检索方法统计**：hybrid/like_only/vector_only 计数
+- **RRF 分数展示**：每条结果的 `rrf_score` 值
+- **检索方法徽章**：每条结果的 `_retrieval_method` 标记（蓝/黄/绿三色）
+
+### 核心组件
+
+| 文件 | 说明 |
+|------|------|
+| [app/pipeline/state.py](app/pipeline/state.py) | `NL2SQLState` TypedDict，包含 query_embedding |
+| [app/pipeline/graph_builder.py](app/pipeline/graph_builder.py) | LangGraph StateGraph 构建，含 embedding_generation_node |
+| [app/pipeline/nodes.py](app/pipeline/nodes.py) | 所有节点函数（含 embedding_generation_node） |
+| [app/pipeline/tools.py](app/pipeline/tools.py) | 混合检索函数：`reciprocal_rank_fusion()`、`vector_search()`、`hybrid_*_search()` |
+| [app/core/embedding_service.py](app/core/embedding_service.py) | 通义千问 Embedding 服务（text-embedding-v3，1024 维） |
+| [app/pipeline/streaming.py](app/pipeline/streaming.py) | SSE 流式执行支持 |
+
+### 执行流程
+
+1. `analyze_question_node`: 通过数据库词表匹配提取问题关键词
+2. `embedding_generation_node`: 生成问题的向量嵌入（1024 维）
+   - 调用 `QwenEmbeddingService.embed_text()`
+   - 如果 `QWEN_API_KEY` 未配置，跳过向量生成，检索退化为纯 LIKE
+3. 三个并行检索节点执行混合检索：
+   - `knowledge_retrieval_node`: 调用 `hybrid_knowledge_search()`
+   - `metrics_retrieval_node`: 调用 `hybrid_metrics_search()`
+   - `metadata_retrieval_node`: 调用 `hybrid_metadata_search()`
+   - 每个节点都执行 LIKE + 多向量字段检索 + RRF 融合
+4. `merge_context_node`: 从元数据命中中收集候选表
+5. `metadata_analysis_node`: 选择表和 join 逻辑
+6. `sql_generation_node`: 生成 SQL（规则模式或 LLM 模式）
+7. `sql_execution_node`: 执行 SQL，失败时自动重试
+
+## ReAct Agent 自主执行架构
+
+基于 LangGraph 的 ReAct 模式，实现 LLM 驱动的自主 SQL 生成：
+
+```
+START → think → [tools → reflect → think]* → final_answer → END
+```
+
+**图结构：**
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │              ReAct Agent                 │
+                    └─────────────────────────────────────────┘
+                                      │
+    START ──→ think ──→ [tools ──→ reflect ──→ think]* ──→ final_answer ──→ END
+                 │              │           │
+                 ▼              ▼           ▼
+          ┌──────────┐   ┌──────────┐  ┌──────────┐
+          │ LLM 决策  │   │ 执行工具  │  │ 评估结果  │
+          │ 下一步行动 │   │ 返回结果  │  │ 是否修正  │
+          └──────────┘   └──────────┘  └──────────┘
 ```
 
 **核心组件：**
 
-- [app/state.py](app/state.py): `NL2SQLState` TypedDict，定义图状态
-- [app/graph_builder.py](app/graph_builder.py): LangGraph StateGraph 构建，包含并行边
-- [app/nodes.py](app/nodes.py): 所有节点函数（问题分析、检索节点、SQL 生成、SQL 执行）
-- [app/tools.py](app/tools.py): PostgreSQL 数据库工具（execute_sql、fetch_*_hits 函数）
-- [app/mysql_tools.py](app/mysql_tools.py): MySQL 数据库工具（历史记录 CRUD）
-- [app/history_routes.py](app/history_routes.py): 历史记录 API 路由
-- [app/prompt_templates.py](app/prompt_templates.py): LLM SQL 生成的系统/用户提示词
-- [app/streaming.py](app/streaming.py): SSE 流式执行支持
+| 文件 | 说明 |
+|------|------|
+| [app/agent_state.py](app/agent_state.py) | `NL2SQLAgentState` TypedDict，定义 Agent 状态 |
+| [app/agent_tools.py](app/agent_tools.py) | 8 个 LangChain Tool（analyze_question, retrieve_knowledge, etc.） |
+| [app/agent_nodes.py](app/agent_nodes.py) | ReAct 节点函数（think, tools, reflect, final_answer） |
+| [app/agent_graph.py](app/agent_graph.py) | LangGraph StateGraph 构建，条件边 |
+| [app/agent_routes.py](app/agent_routes.py) | Agent API 路由 |
+
+**工具列表：**
+
+| 工具 | 功能 | 参数 |
+|------|------|------|
+| `analyze_question` | 分析问题，提取意图、关键词、指标、维度 | question, datasource_id |
+| `retrieve_knowledge` | 从知识库检索业务术语 | keywords |
+| `retrieve_metrics` | 检索指标定义 | metric_names |
+| `retrieve_metadata` | 检索表/字段映射和 M-Schema | topics, datasource_id |
+| `get_schema` | 获取数据库 Schema（M-Schema 格式） | table_names, datasource_id |
+| `generate_sql` | 生成 SQL 查询语句 | question, selected_tables, schema_context, previous_error |
+| `execute_sql` | 执行 SQL 并返回结果 | sql, datasource_id |
+| `explain_results` | 用自然语言解释查询结果 | question, sql, result |
 
 **执行流程：**
-1. `analyze_question_node`: 通过数据库词表匹配提取问题关键词
-2. 三个并行检索节点从以下表获取上下文：
-   - `enterprise_kb`: 业务术语和示例 Q&A
-   - `metrics_catalog`: 指标定义和聚合规则
-   - `lake_table_metadata`: 指标对应的表/字段映射
-3. `merge_context_node`: 从元数据命中中收集候选表
-4. `metadata_analysis_node`: 选择表和 join 逻辑
-5. `sql_generation_node`: 生成 SQL（规则模式或 LLM 模式）
-6. `sql_execution_node`: 执行 SQL，失败时自动重试
+
+1. **Think（思考节点）**：
+   - LLM 分析当前状态，决定下一步行动
+   - 通过 `llm.bind_tools()` 获取工具调用
+   - 注入 tool_history 避免重复调用
+
+2. **Tools（工具执行节点）**：
+   - 从 LLM 响应中提取 tool_calls
+   - 依次执行每个工具
+   - 返回工具结果消息
+
+3. **Reflect（反思节点）**：
+   - 分析执行结果
+   - 决定是否需要修正 SQL
+   - 更新迭代计数
+
+4. **Final Answer（最终回答节点）**：
+   - 生成自然语言回答
+   - 包含 SQL 和结果摘要
+
+**API 端点：**
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/agent/query` | POST | Agent 同步查询 |
+| `/agent/stream` | GET | Agent SSE 流式查询 |
+| `/agent/graph` | GET | 获取 Agent 图结构 |
 
 ## 数据库架构
 
@@ -157,17 +374,24 @@ nl2sql-langgraph/
 
 | 数据库 | 用途 | 表 |
 |--------|------|-----|
-| PostgreSQL | 问数业务数据 | `enterprise_kb`, `metrics_catalog`, `lake_table_metadata`, `fact_orders` |
+| PostgreSQL + pgvector | 问数业务数据 + 向量检索 | `enterprise_kb`, `metrics_catalog`, `lake_table_metadata`, `fact_orders` |
 | MySQL | 平台数据 | `query_history`, `user_preferences` |
 
 ### PostgreSQL 表（业务数据）
 
-| 表名 | 说明 |
-|------|------|
-| `enterprise_kb` | 企业知识库/术语表（keyword_synonyms、business_meaning、example_sql_template） |
-| `metrics_catalog` | 指标口径目录（metric_name、metric_synonyms、business_definition、aggregation_rule） |
-| `lake_table_metadata` | 湖表业务元数据（topic、metric_name、fact_table、measure_sql_expression） |
-| `fact_orders` | 示例事实表（用于测试） |
+| 表名 | 说明 | 向量字段 |
+|------|------|---------|
+| `enterprise_kb` | 企业知识库/术语表 | `keyword_embedding`, `business_embedding` |
+| `metrics_catalog` | 指标口径目录 | `metric_embedding`, `synonym_embedding` |
+| `lake_table_metadata` | 湖表业务元数据 | `topic_embedding`, `metric_embedding` |
+| `fact_orders` | 示例事实表（用于测试） | - |
+
+### pgvector 向量索引
+
+所有向量字段使用 HNSW 索引（高性能近似检索）：
+- 索引参数：`m = 16, ef_construction = 64`
+- 距离度量：余弦距离（`vector_cosine_ops`）
+- 向量维度：1024
 
 ### MySQL 表（平台数据）
 
@@ -243,8 +467,10 @@ data: {"question": "...", "sql": "...", "columns": [...], "rows": [...]}
 - LangGraph（状态图编排）
 - LangChain + OpenAI（可选 LLM 模式）
 - psycopg（PostgreSQL 驱动）
+- pgvector（向量检索扩展）
 - PyMySQL（MySQL 驱动）
 - Pydantic（数据验证）
+- OpenAI SDK（通义千问 Embedding）
 
 **前端：**
 - Vue 3 + TypeScript
