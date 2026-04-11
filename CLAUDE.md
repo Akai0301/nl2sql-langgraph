@@ -105,16 +105,8 @@ nl2sql-langgraph/
 │   ├── history_routes.py         # 历史记录 API 路由
 │   ├── prompt_templates.py       # LLM SQL 生成的系统/用户提示词
 │   ├── streaming.py              # SSE 流式执行支持
-│   ├── agent_state.py            # ReAct Agent 状态定义
-│   ├── agent_tools.py            # ReAct Agent 工具函数（8 个 LangChain Tool）
-│   ├── agent_nodes.py            # ReAct Agent 节点函数（think/tools/reflect）
-│   ├── agent_graph.py            # ReAct Agent LangGraph 构建
-│   ├── agent_routes.py           # ReAct Agent API 路由
 │   ├── semantic_matcher.py       # 语义字段匹配服务
 │   ├── sql_validator.py          # SQL 验证与自动修正
-│   ├── example_sql_generator.py  # 示例 SQL 生成器
-│   ├── schema_engine.py          # Schema 提取引擎
-│   ├── learning_service.py       # Schema 学习服务
 │   └── settings_routes.py        # 设置管理 API 路由
 ├── db/                           # 数据库脚本
 │   ├── __init__.py

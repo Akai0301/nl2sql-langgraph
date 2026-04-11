@@ -10,10 +10,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from .graph_builder import build_graph
-from .streaming import stream_query_simple, GRAPH_STRUCTURE
-from .history_routes import router as history_router
-from .settings_routes import router as settings_router
+from app.pipeline.graph_builder import build_graph
+from app.pipeline.streaming import stream_query_simple, GRAPH_STRUCTURE
+from app.routes.history import router as history_router
+from app.routes.settings import router as settings_router
 
 # Load .env from project root
 ENV_PATH = Path(__file__).parent.parent / ".env"
@@ -35,6 +35,20 @@ async def cors_middleware(request: Request, call_next):
                 "Access-Control-Allow-Headers": "*",
             }
         )
+
+    # SPA routing: if browser requests HTML and path matches API route, serve SPA
+    accept_header = request.headers.get("accept", "")
+    path = request.url.path.strip('/')
+
+    # Check if this is a browser navigation (accepts HTML) to a frontend route
+    is_browser_request = "text/html" in accept_header
+    is_api_path = path.startswith(('settings', 'history', 'query', 'stream', 'graph', 'api'))
+
+    if is_browser_request and is_api_path and request.method == "GET":
+        # This is likely a browser navigation to a frontend route, serve SPA
+        index_path = STATIC_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
 
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -75,7 +89,7 @@ def query(req: QueryRequest):
     """Synchronous query endpoint."""
     # 设置数据源（如果指定）
     if req.datasource_id:
-        from .datasource_manager import set_current_datasource
+        from app.core.datasource_manager import set_current_datasource
         set_current_datasource(req.datasource_id)
 
     initial_state = {
@@ -90,7 +104,7 @@ def query(req: QueryRequest):
 
     # Save to history
     try:
-        from .mysql_tools import create_history
+        from app.core.mysql_tools import create_history
         create_history(
             question=state.get("question") or req.question,
             sql=state.get("generated_sql"),
