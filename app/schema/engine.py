@@ -18,7 +18,7 @@ import psycopg
 import pymysql
 from pymysql.cursors import DictCursor
 
-from .config_service import DataSourceConfig
+from app.core.config_service import DataSourceConfig
 
 
 @dataclass

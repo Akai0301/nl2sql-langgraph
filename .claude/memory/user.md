@@ -59,3 +59,28 @@
 - 使用中文
 - 技术术语保留英文
 - 代码示例优先于文字描述
+
+---
+
+## 项目环境配置（🔴 必须遵守）
+
+### 本地域名
+- **后端地址**：http://nl2sql.local:8000（已在 hosts 文件配置 127.0.0.1 nl2sql.local）
+- 所有 API 请求、测试、前端代理都应使用此域名
+
+### Python 虚拟环境
+- **虚拟环境路径**：`D:\01_AlCoding_Test\nl2sql-langgraph\venv`（项目根目录）
+- **项目路径**：`D:\01_AlCoding_Test\nl2sql-langgraph`
+- **启动后端命令**：
+  ```bash
+  cd d:/01_AlCoding_Test/nl2sql-langgraph && venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000
+  ```
+- ⚠️ 必须从项目根目录启动，确保 `.env` 文件路径正确解析
+- ⚠️ 不要直接调用 `uvicorn`，必须使用虚拟环境的 Python
+
+### 启动服务检查清单
+1. 后端启动前确认当前目录是 `d:/01_AlCoding_Test/nl2sql-langgraph`
+2. 后端启动使用完整路径的虚拟环境 Python
+3. 前端开发服务器端口：`3008`（vite.config.ts 已配置 strictPort: true）
+4. 前端开发服务器代理目标应为 `http://nl2sql.local:8000`
+5. 测试 API 时使用 `http://nl2sql.local:8000` 而非 `localhost:8000`

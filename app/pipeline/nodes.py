@@ -7,23 +7,23 @@ from typing import Any
 import psycopg
 from pydantic import BaseModel, Field
 
-from .prompt_templates import (
-    METADATA_ANALYSIS_HUMAN,
-    METADATA_ANALYSIS_SYSTEM,
+from app.prompt_templates import (
     SQL_GENERATION_EXAMPLE_SECTION,
     SQL_GENERATION_HUMAN,
     SQL_GENERATION_MSCHEMA_SECTION,
     SQL_GENERATION_SEMANTIC_SECTION,
     SQL_GENERATION_SYSTEM,
 )
-from .state import NL2SQLState
-from .tools import (
+from app.pipeline.state import NL2SQLState
+from app.pipeline.tools import (
     execute_sql,
     fetch_knowledge_hits,
-    fetch_metadata_hits,
     fetch_metadata_hits_with_cache,
     fetch_metrics_hits,
     get_postgres_dsn,
+    hybrid_knowledge_search,
+    hybrid_metrics_search,
+    hybrid_metadata_search,
 )
 
 
@@ -89,6 +89,11 @@ def _extract_keywords_via_db(question: str) -> list[str]:
 
 
 def analyze_question_node(state: NL2SQLState) -> dict[str, Any]:
+    """
+    问题分析节点：
+    1. 提取关键词
+    2. 初始化状态
+    """
     question = state["question"].strip()
     max_attempts = int(os.getenv("SQL_MAX_ATTEMPTS", "2"))
 
@@ -108,17 +113,86 @@ def analyze_question_node(state: NL2SQLState) -> dict[str, Any]:
     }
 
 
+async def embedding_generation_node(state: NL2SQLState) -> dict[str, Any]:
+    """
+    向量生成节点：生成问题的 embedding 向量
+
+    使用通义千问 text-embedding-v3 模型生成 1024 维向量，
+    用于后续的混合检索（LIKE + 向量 + RRF 融合）。
+
+    如果 QWEN_API_KEY 未配置，则跳过向量生成，
+    检索节点将退化为纯 LIKE 检索。
+    """
+    question = state["question"].strip()
+    query_embedding = None
+
+    # 检查是否配置了 Qwen API Key
+    qwen_api_key = os.getenv("QWEN_API_KEY")
+    if qwen_api_key:
+        try:
+            from app.core.embedding_service import embed_query
+            query_embedding = await embed_query(question)
+        except Exception as e:
+            # 向量生成失败不影响整体流程，检索将退化为 LIKE
+            import logging
+            logging.warning(f"Embedding generation failed: {e}, will use LIKE-only retrieval")
+
+    return {
+        "query_embedding": query_embedding,
+    }
+
+
 def knowledge_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
-    return {"knowledge_hits": fetch_knowledge_hits(state.get("keywords", []))}
+    """
+    知识检索节点：混合检索（LIKE + 向量）+ RRF 融合
+
+    如果 query_embedding 存在，使用混合检索；
+    否则退化为 LIKE 检索（兼容旧流程）。
+    """
+    keywords = state.get("keywords", [])
+    query_embedding = state.get("query_embedding")
+
+    # 如果已有 query_embedding，使用混合检索
+    if query_embedding:
+        hits = hybrid_knowledge_search(
+            keywords=keywords,
+            query_embedding=query_embedding,
+            top_k=20,
+            rrf_k=60,
+        )
+    else:
+        # 退化：仅 LIKE 检索
+        hits = fetch_knowledge_hits(keywords)
+
+    return {"knowledge_hits": hits}
 
 
 def metrics_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
-    return {"metrics_hits": fetch_metrics_hits(state.get("keywords", []))}
+    """
+    指标检索节点：混合检索（LIKE + 向量）+ RRF 融合
+
+    如果 query_embedding 存在，使用混合检索；
+    否则退化为 LIKE 检索（兼容旧流程）。
+    """
+    keywords = state.get("keywords", [])
+    query_embedding = state.get("query_embedding")
+
+    if query_embedding:
+        hits = hybrid_metrics_search(
+            keywords=keywords,
+            query_embedding=query_embedding,
+            top_k=20,
+            rrf_k=60,
+        )
+    else:
+        hits = fetch_metrics_hits(keywords)
+
+    return {"metrics_hits": hits}
 
 
 def metadata_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
     """
-    元数据检索节点：优先从 schema_cache 获取 M-Schema，回退到 lake_table_metadata。
+    元数据检索节点：混合检索（LIKE + 向量）+ RRF 融合
 
     Phase 4.1 增强：
     - 如果指定了 datasource_id，优先从 MySQL schema_cache 获取完整的 M-Schema
@@ -128,6 +202,10 @@ def metadata_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
     P2 增强：
     - 使用语义匹配服务理解问题与字段的关联
     - 返回 semantic_context 用于 LLM Prompt
+
+    混合检索增强：
+    - 如果 query_embedding 存在，使用混合检索 + RRF 融合
+    - 每个命中结果携带 rrf_score、like_rank、vector_rank
     """
     metrics_hits = state.get("metrics_hits", []) or []
     metric_names = [m.get("metric_name") for m in metrics_hits if m.get("metric_name")]
@@ -135,17 +213,29 @@ def metadata_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
     topic_or_metrics = [str(x) for x in metric_names] + [str(k) for k in state.get("keywords", [])]
     datasource_id = state.get("datasource_id")
     question = state.get("question", "")
+    query_embedding = state.get("query_embedding")
 
-    # 使用增强的检索函数（带缓存）
-    metadata_hits, mschema_context = fetch_metadata_hits_with_cache(
-        topic_or_metrics,
-        datasource_id=datasource_id,
-    )
+    # 混合检索（如果已有 query_embedding）
+    if query_embedding:
+        metadata_hits = hybrid_metadata_search(
+            topics_or_metrics=topic_or_metrics,
+            query_embedding=query_embedding,
+            top_k=30,
+            rrf_k=60,
+        )
+        # 混合检索结果已包含 rrf_score
+        mschema_context = ""
+    else:
+        # 退化：使用原有检索（带缓存）
+        metadata_hits, mschema_context = fetch_metadata_hits_with_cache(
+            topic_or_metrics,
+            datasource_id=datasource_id,
+        )
 
     # P2: 语义化字段匹配
     semantic_context = ""
     if datasource_id and question:
-        from .tools import semantic_field_matching, format_semantic_context
+        from app.pipeline.tools import semantic_field_matching, format_semantic_context
         matched_fields, reasoning = semantic_field_matching(
             question=question,
             datasource_id=datasource_id,
@@ -157,7 +247,7 @@ def metadata_retrieval_node(state: NL2SQLState) -> dict[str, Any]:
     # P4: 获取示例 SQL
     example_sqls_context = ""
     if datasource_id:
-        from .tools import fetch_example_sqls, format_example_sqls_context
+        from app.pipeline.tools import fetch_example_sqls, format_example_sqls_context
         example_sqls = fetch_example_sqls(datasource_id)
         if example_sqls:
             example_sqls_context = format_example_sqls_context(example_sqls)
@@ -474,7 +564,7 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
     )
     metadata_context = "\n".join(
         [
-            f"- topic={m.get('topic')} metric={m.get('metric_name')} fact_table={m.get('fact_table')} time_col={m.get('fact_time_column')} region_col={m.get('fact_region_column')} measure={m.get('measure_sql_expression')}"
+            f"- topic={m.get('topic')} metric={m.get('metric_name')} fact_table={m.get('fact_table')} dim_table={m.get('dimension_table') or 'None'} join_key={m.get('dimension_join_key') or 'None'} time_col={m.get('fact_time_column')} measure={m.get('measure_sql_expression')}"
             for m in metadata_hits[:10]
         ]
     )
@@ -509,8 +599,8 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
 
     try:
         # 使用新的配置服务和 LLM 提供商适配器
-        from .config_service import get_active_ai_config
-        from .llm_provider import create_llm
+        from app.core.config_service import get_active_ai_config
+        from app.core.llm_provider import create_llm
 
         config = get_active_ai_config()
         llm = create_llm(config)
@@ -525,6 +615,84 @@ def sql_generation_node(state: NL2SQLState) -> dict[str, Any]:
             "LLM 依赖未安装。建议先安装依赖（pip install langchain-openai langchain-anthropic），或保持 USE_MOCK_LLM=true（默认）。"
         ) from e
 
+    # Anthropic 提供商（DashScope 兼容端点）不支持在 thinking mode 下使用 tool_choice
+    # 使用替代方案：普通 invoke + JSON 格式要求 + 手动解析
+    if config.provider.lower() == "anthropic" or config.thinking_mode:
+        import json
+        import re
+
+        # 在 prompt 中要求返回 JSON 格式
+        json_format_prompt = "\n\n请以 JSON 格式返回结果，格式如下：\n{\"sql\": \"生成的SQL语句\", \"selected_tables\": [\"表名列表\"], \"rationale\": \"选择理由\"}\n\n只返回 JSON，不要有其他内容。"
+
+        messages = [
+            {"role": "system", "content": system_prompt + json_format_prompt},
+            {"role": "user", "content": human_prompt},
+        ]
+
+        response = llm.invoke(messages)
+        raw_content = response.content
+
+        # 确保 raw_content 是字符串
+        if not isinstance(raw_content, str):
+            raw_content = str(raw_content)
+
+        # 提取 JSON（可能被 thinking block 包裹）
+        # 方法1: 尝试直接解析整个响应
+        json_data = None
+        try:
+            json_data = json.loads(raw_content)
+        except json.JSONDecodeError:
+            # 方法2: 尝试提取 JSON 块（查找第一个 { 和最后一个 }）
+            start_idx = raw_content.find('{')
+            end_idx = raw_content.rfind('}')
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                try:
+                    json_str = raw_content[start_idx:end_idx + 1]
+                    json_data = json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+
+        # 方法3: 尝试从 content blocks 中提取（Anthropic 格式）
+        if json_data is None and isinstance(response.content, list):
+            for block in response.content:
+                if hasattr(block, 'type') and block.type == 'text':
+                    try:
+                        text = block.text
+                        start_idx = text.find('{')
+                        end_idx = text.rfind('}')
+                        if start_idx != -1 and end_idx != -1:
+                            json_data = json.loads(text[start_idx:end_idx + 1])
+                            break
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+
+        if json_data:
+            out = SQLGenerationOutput(
+                sql=json_data.get("sql", ""),
+                selected_tables=json_data.get("selected_tables", []),
+                rationale=json_data.get("rationale", ""),
+            )
+        else:
+            # JSON 解析失败，使用 mock
+            out = _mock_sql_generation(state)
+
+        # 提取 token usage
+        token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            token_usage = {
+                "prompt_tokens": response.usage_metadata.get('input_tokens', 0),
+                "completion_tokens": response.usage_metadata.get('output_tokens', 0),
+                "total_tokens": response.usage_metadata.get('total_tokens', 0),
+            }
+
+        return {
+            "generated_sql": out.sql,
+            "execution_error": "",
+            "selected_tables": out.selected_tables,
+            "token_usage": token_usage,
+        }
+
+    # 其他提供商：使用 with_structured_output
     structured = llm.with_structured_output(SQLGenerationOutput)
     messages = [
         {"role": "system", "content": system_prompt},
@@ -572,7 +740,7 @@ def sql_execution_node(state: NL2SQLState) -> dict[str, Any]:
     validation_info = {}
     if datasource_id:
         try:
-            from .sql_validator import validate_sql_with_schema, format_validation_result
+            from app.pipeline.sql_validator import validate_sql_with_schema
             validation_result = validate_sql_with_schema(sql, datasource_id)
 
             if validation_result.corrected_sql:

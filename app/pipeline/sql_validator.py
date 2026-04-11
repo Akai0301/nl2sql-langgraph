@@ -325,7 +325,7 @@ def validate_sql_with_schema(
     Returns:
         ValidationResult
     """
-    from .tools import fetch_schema_cache
+    from app.pipeline.tools import fetch_schema_cache
 
     # 获取 Schema 缓存
     cache = fetch_schema_cache(datasource_id)

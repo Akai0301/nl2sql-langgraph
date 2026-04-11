@@ -3,11 +3,9 @@ LLM 提供商适配器：统一封装 OpenAI、Anthropic、DeepSeek 等不同 SD
 """
 from __future__ import annotations
 
-from typing import Any
-
 from langchain_core.language_models import BaseChatModel
 
-from .config_service import AIModelConfig
+from app.core.config_service import AIModelConfig
 
 
 def create_llm(config: AIModelConfig) -> BaseChatModel:

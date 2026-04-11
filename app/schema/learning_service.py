@@ -15,11 +15,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
-from .config_service import AIModelConfig, DataSourceConfig, get_active_ai_config, get_datasource_by_id
-from .mysql_tools import get_mysql_connection
-from .schema_classifier import SchemaClassifier
-from .schema_descriptor import SchemaDescriptor
-from .schema_engine import SchemaEngine, SchemaUnderstanding
+from app.core.config_service import AIModelConfig, DataSourceConfig, get_active_ai_config, get_datasource_by_id
+from app.core.mysql_tools import get_mysql_connection
+from app.schema.classifier import SchemaClassifier
+from app.schema.descriptor import SchemaDescriptor
+from app.schema.engine import SchemaEngine, SchemaUnderstanding
 
 
 @dataclass
@@ -190,7 +190,7 @@ class LearningService:
         Returns:
             示例 SQL 列表
         """
-        from .example_sql_generator import generate_example_sql_for_schema
+        from app.schema.example_sql_generator import generate_example_sql_for_schema
 
         examples = generate_example_sql_for_schema(schema, dialect=self.config.ds_type)
 

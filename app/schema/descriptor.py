@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .config_service import AIModelConfig
-from .llm_provider import create_llm
-from .prompt_templates import (
+from app.core.config_service import AIModelConfig
+from app.core.llm_provider import create_llm
+from app.prompt_templates import (
     DB_UNDERSTANDING_PROMPT,
     FIELD_CLASSIFICATION_PROMPT,
     FIELD_DESC_PROMPT,
@@ -22,7 +22,7 @@ from .prompt_templates import (
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-    from .schema_engine import FieldInfo, SchemaUnderstanding, TableInfo
+    from app.schema.engine import FieldInfo, SchemaUnderstanding, TableInfo
 
 
 class SchemaDescriptor:

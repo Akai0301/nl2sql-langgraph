@@ -5,15 +5,13 @@ import json
 import time
 from typing import Any, AsyncGenerator
 
-from starlette.responses import StreamingResponse
-
-from .graph_builder import build_graph
-from .state import NL2SQLState
+from app.pipeline.graph_builder import build_graph
 
 
 # Node display names for frontend
 NODE_LABELS = {
     "analyze_question": "问题分析",
+    "embedding_generation": "向量生成",
     "knowledge_retrieval": "知识检索",
     "metrics_retrieval": "指标检索",
     "metadata_retrieval": "元数据检索",
@@ -28,6 +26,7 @@ GRAPH_STRUCTURE = {
     "nodes": [
         {"id": "start", "label": "开始", "type": "start"},
         {"id": "analyze_question", "label": "问题分析", "type": "process"},
+        {"id": "embedding_generation", "label": "向量生成", "type": "process"},
         {"id": "knowledge_retrieval", "label": "知识检索", "type": "parallel"},
         {"id": "metrics_retrieval", "label": "指标检索", "type": "parallel"},
         {"id": "metadata_retrieval", "label": "元数据检索", "type": "parallel"},
@@ -39,9 +38,10 @@ GRAPH_STRUCTURE = {
     ],
     "edges": [
         {"source": "start", "target": "analyze_question"},
-        {"source": "analyze_question", "target": "knowledge_retrieval"},
-        {"source": "analyze_question", "target": "metrics_retrieval"},
-        {"source": "analyze_question", "target": "metadata_retrieval"},
+        {"source": "analyze_question", "target": "embedding_generation"},
+        {"source": "embedding_generation", "target": "knowledge_retrieval"},
+        {"source": "embedding_generation", "target": "metrics_retrieval"},
+        {"source": "embedding_generation", "target": "metadata_retrieval"},
         {"source": "knowledge_retrieval", "target": "merge_context"},
         {"source": "metrics_retrieval", "target": "merge_context"},
         {"source": "metadata_retrieval", "target": "merge_context"},
@@ -110,7 +110,7 @@ async def stream_query_execution(
     node_statuses: dict[str, str] = {}
 
     valid_nodes = [
-        "analyze_question", "knowledge_retrieval", "metrics_retrieval",
+        "analyze_question", "embedding_generation", "knowledge_retrieval", "metrics_retrieval",
         "metadata_retrieval", "merge_context", "metadata_analysis",
         "sql_generation", "sql_execution"
     ]
@@ -183,11 +183,11 @@ async def stream_query_simple(
     Simple streaming that executes nodes sequentially and yields progress.
     Used when astream_events is not available or graph is not async.
     """
-    from . import nodes
+    import app.pipeline.nodes as nodes
 
     # 设置数据源（如果指定）
     if datasource_id:
-        from .datasource_manager import set_current_datasource
+        from app.core.datasource_manager import set_current_datasource
         set_current_datasource(datasource_id)
 
     # Yield initial state with graph structure
@@ -211,6 +211,7 @@ async def stream_query_simple(
     # Execute nodes in order
     node_sequence = [
         ("analyze_question", nodes.analyze_question_node),
+        ("embedding_generation", nodes.embedding_generation_node),
         ("knowledge_retrieval", nodes.knowledge_retrieval_node),
         ("metrics_retrieval", nodes.metrics_retrieval_node),
         ("metadata_retrieval", nodes.metadata_retrieval_node),
@@ -232,8 +233,12 @@ async def stream_query_simple(
         })
 
         try:
-            # Execute node
-            output = node_func(state)
+            # Execute node (handle async functions)
+            import asyncio
+            if asyncio.iscoroutinefunction(node_func):
+                output = await node_func(state)
+            else:
+                output = node_func(state)
             state.update(output)
 
             # Record end time and calculate duration
@@ -325,7 +330,7 @@ async def stream_query_simple(
 
     # Save to history with session_id
     try:
-        from .mysql_tools import create_history, create_session, update_session_title
+        from app.core.mysql_tools import create_history, create_session
         # Create session if not provided
         actual_session_id = session_id
         if actual_session_id is None:

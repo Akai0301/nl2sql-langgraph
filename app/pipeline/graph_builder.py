@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from .nodes import (
+from app.pipeline.nodes import (
     analyze_question_node,
+    embedding_generation_node,
     knowledge_retrieval_node,
     merge_context_node,
     metadata_analysis_node,
@@ -12,17 +13,25 @@ from .nodes import (
     sql_execution_node,
     sql_generation_node,
 )
-from .state import NL2SQLState
+from app.pipeline.state import NL2SQLState
 
 
 def build_graph():
     """
-    梭子形主流程：
-    QuestionAnalyzer -> Supervisor(隐含在图的 fan-out) -> 并行检索(spokes) -> 汇总 -> MetadataAnalysis -> SQLGeneration -> SQLExecution
+    梭子形主流程（Phase 3 增强：混合检索 + RRF 融合）：
+
+    QuestionAnalyzer -> EmbeddingGeneration -> Supervisor(隐含在图的 fan-out) ->
+    并行检索(spokes, 混合检索) -> 汇总 -> MetadataAnalysis -> SQLGeneration -> SQLExecution
+
+    新增 embedding_generation_node：
+    - 在 analyze_question 后执行
+    - 生成问题的向量用于混合检索
+    - 如果 QWEN_API_KEY 未配置，跳过向量生成
     """
     builder = StateGraph(NL2SQLState)
 
     builder.add_node("analyze_question", analyze_question_node)
+    builder.add_node("embedding_generation", embedding_generation_node)
     builder.add_node("knowledge_retrieval", knowledge_retrieval_node)
     builder.add_node("metrics_retrieval", metrics_retrieval_node)
     builder.add_node("metadata_retrieval", metadata_retrieval_node)
@@ -31,11 +40,14 @@ def build_graph():
     builder.add_node("sql_generation", sql_generation_node)
     builder.add_node("sql_execution", sql_execution_node)
 
-    # Entry
+    # Entry: analyze_question -> embedding_generation
     builder.add_edge(START, "analyze_question")
-    builder.add_edge("analyze_question", "knowledge_retrieval")
-    builder.add_edge("analyze_question", "metrics_retrieval")
-    builder.add_edge("analyze_question", "metadata_retrieval")
+    builder.add_edge("analyze_question", "embedding_generation")
+
+    # Fan-out: embedding_generation -> parallel retrieval nodes
+    builder.add_edge("embedding_generation", "knowledge_retrieval")
+    builder.add_edge("embedding_generation", "metrics_retrieval")
+    builder.add_edge("embedding_generation", "metadata_retrieval")
 
     # Fan-in: merge_context 依赖三条 spoke 的输出（并行执行）
     builder.add_edge("knowledge_retrieval", "merge_context")

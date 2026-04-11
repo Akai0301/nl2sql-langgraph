@@ -1,11 +1,13 @@
 fastapi>=0.110
 uvicorn[standard]>=0.27
 sse-starlette>=2.0
+loguru>=0.7
 
 # LangGraph/LangChain（均支持 Python 3.12+）
 langgraph>=0.2
 langchain-core>=0.3
 langchain-openai>=0.2
+langchain-anthropic>=1.0
 
 # 数据与配置
 pydantic>=2.6

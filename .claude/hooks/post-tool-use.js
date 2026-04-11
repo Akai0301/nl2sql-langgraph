@@ -185,8 +185,20 @@ if (excludePatterns.some(p => p.test(normalizedPath))) {
   process.exit(0);
 }
 
-// ─── 定位 session 文件 ───────────────────────────────────────────────────────
-const projectRoot = process.cwd();
+// ─── 定位项目根目录（支持从任意子目录运行）────────────────────────────────────
+function findProjectRoot(startDir) {
+  let dir = startDir;
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.claude'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  // 如果找不到，返回当前目录
+  return startDir;
+}
+
+const projectRoot = findProjectRoot(process.cwd());
 const { username, hostname, dir, file: sessionFile } = resolveSessionFile(projectRoot);
 
 // 确保 ai-sessions/ 目录存在

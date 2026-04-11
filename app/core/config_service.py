@@ -9,7 +9,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .mysql_tools import get_mysql_connection
+from app.core.mysql_tools import get_mysql_connection
 
 
 # ============ 配置数据类 ============
@@ -24,6 +24,7 @@ class AIModelConfig:
     api_key: Optional[str] = None
     model_name: str = "gpt-4o-mini"
     is_active: bool = False
+    thinking_mode: bool = False  # 是否为思考模式（不支持 tool_choice）
     extra_params: dict[str, Any] = field(default_factory=dict)
 
 
@@ -112,6 +113,14 @@ def _fetch_active_ai_config_from_mysql() -> Optional[AIModelConfig]:
             """)
             row = cur.fetchone()
             if row:
+                extra_params = json.loads(row['extra_params'] or '{}')
+                # thinking_mode 可以从 extra_params 或单独字段读取
+                thinking_mode = extra_params.get('thinking_mode', False)
+                # 某些端点默认启用思考模式（如 DashScope Anthropic 兼容端点）
+                base_url = row['base_url'] or ''
+                if 'dashscope.aliyuncs.com' in base_url:
+                    thinking_mode = True
+
                 return AIModelConfig(
                     id=row['id'],
                     config_name=row['config_name'],
@@ -120,7 +129,8 @@ def _fetch_active_ai_config_from_mysql() -> Optional[AIModelConfig]:
                     api_key=row['api_key'],
                     model_name=row['model_name'],
                     is_active=bool(row['is_active']),
-                    extra_params=json.loads(row['extra_params'] or '{}'),
+                    thinking_mode=thinking_mode,
+                    extra_params=extra_params,
                 )
     except Exception:
         pass

@@ -3,9 +3,10 @@ import { ref, computed } from 'vue'
 import type { GraphStructure, NodeState, QueryResult, QueryHistory, ConversationMessage, StepState, HistoryListParams, TokenUsage } from '@/types'
 import { createStreamingConnection, listHistory, toggleFavorite as apiToggleFavorite, deleteHistory as apiDeleteHistory, batchDeleteHistory, clearHistory as apiClearHistory } from '@/api/query'
 
-// Node label mapping
+// Node label mapping (embedding_generation hidden)
 const NODE_LABELS: Record<string, string> = {
   analyze_question: '问题分析',
+  // embedding_generation: '向量生成', // hidden from frontend display
   knowledge_retrieval: '知识检索',
   metrics_retrieval: '指标检索',
   metadata_retrieval: '元数据检索',
@@ -15,9 +16,10 @@ const NODE_LABELS: Record<string, string> = {
   sql_execution: 'SQL执行',
 }
 
-// Step order for display
+// Step order for display (embedding_generation hidden)
 const STEP_ORDER = [
   'analyze_question',
+  // 'embedding_generation', // hidden - runs silently in backend
   'knowledge_retrieval',
   'metrics_retrieval',
   'metadata_retrieval',

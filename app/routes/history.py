@@ -6,7 +6,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .mysql_tools import (
+from app.core.mysql_tools import (
     create_history,
     delete_history,
     delete_history_batch,

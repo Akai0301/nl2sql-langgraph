@@ -5,25 +5,26 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .config_service import (
+from app.core.config_service import (
     AIModelConfig,
     DataSourceConfig,
     list_ai_configs,
     list_datasource_configs,
     get_datasource_by_id,
 )
-from .datasource_manager import (
+from app.core.datasource_manager import (
     test_datasource_connection,
     get_datasource_tables,
     get_table_columns,
     preview_table_data,
 )
-from .knowledge_manager import (
+from app.schema.knowledge_manager import (
     create_knowledge,
     get_knowledge_by_id,
     list_knowledge,
@@ -33,7 +34,7 @@ from .knowledge_manager import (
     list_knowledge_types,
     get_knowledge_type_info,
 )
-from .mysql_tools import get_mysql_connection
+from app.core.mysql_tools import get_mysql_connection
 
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -115,7 +116,8 @@ def api_list_ai_configs():
                 "config_name": c.config_name,
                 "provider": c.provider,
                 "base_url": c.base_url,
-                "api_key": "***" if c.api_key else None,  # 隐藏 API Key
+                "api_key": None,  # 不返回实际值，由前端按需获取
+                "has_api_key": bool(c.api_key),  # 标记是否已配置
                 "model_name": c.model_name,
                 "is_active": c.is_active,
                 "extra_params": c.extra_params,
@@ -129,6 +131,20 @@ def api_list_ai_configs():
             "model_name": active.model_name,
         } if active else None,
     }
+
+
+@router.get("/ai/{config_id}/api-key")
+def api_get_ai_config_api_key(config_id: int):
+    """获取 AI 配置的 API Key（用于前端显示已保存的密钥）"""
+    conn = get_mysql_connection()
+    with conn.cursor() as cur:
+        cur.execute("SELECT api_key FROM ai_model_config WHERE id = %s", (config_id,))
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="配置不存在")
+
+    return {"api_key": row["api_key"] or ""}
 
 
 @router.post("/ai")
@@ -149,7 +165,7 @@ def api_create_ai_config(req: AIConfigCreateRequest):
             req.config_name,
             req.provider,
             req.base_url,
-            req.api_key,
+            req.api_key.strip() if req.api_key else None,  # 去除首尾空格
             req.model_name,
             json.dumps(req.extra_params, ensure_ascii=False),
         ))
@@ -184,7 +200,7 @@ def api_update_ai_config(config_id: int, req: AIConfigUpdateRequest):
 
     if req.api_key is not None:
         updates.append("api_key = %s")
-        params.append(req.api_key)
+        params.append(req.api_key.strip())  # 去除首尾空格
 
     if req.model_name is not None:
         updates.append("model_name = %s")
@@ -200,15 +216,17 @@ def api_update_ai_config(config_id: int, req: AIConfigUpdateRequest):
     params.append(config_id)
 
     with conn.cursor() as cur:
+        # 先检查记录是否存在（MySQL UPDATE 在值不变时 rowcount 会返回 0）
+        cur.execute("SELECT id FROM ai_model_config WHERE id = %s", (config_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="配置不存在")
+
         cur.execute(f"""
             UPDATE ai_model_config
             SET {", ".join(updates)}
             WHERE id = %s
         """, params)
         conn.commit()
-
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=404, detail="配置不存在")
 
         cur.execute("SELECT * FROM ai_model_config WHERE id = %s", (config_id,))
         row = cur.fetchone()
@@ -263,6 +281,221 @@ def api_activate_ai_config(config_id: int):
     return {"success": True, "message": "配置已激活"}
 
 
+class AITestRequest(BaseModel):
+    """LLM 连接测试请求（可选参数覆盖）"""
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model_name: Optional[str] = None
+
+
+@router.post("/ai/{config_id}/test")
+def api_test_ai_config(config_id: int, req: Optional[AITestRequest] = None):
+    """
+    测试 AI 模型配置连接
+
+    发送一个简单的测试请求验证：
+    - API Key 是否有效
+    - base_url 是否可达
+    - 模型是否可用
+
+    支持 OpenAI、Anthropic、DeepSeek 等协议
+    """
+    from app.core.llm_provider import create_llm
+    from app.core.config_service import AIModelConfig
+
+    # 从数据库获取配置
+    conn = get_mysql_connection()
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT id, config_name, provider, base_url, api_key,
+                   model_name, is_active, extra_params
+            FROM ai_model_config
+            WHERE id = %s
+        """, (config_id,))
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="配置不存在")
+
+    # 构建配置对象（允许请求参数覆盖）
+    base_url = req.base_url if req and req.base_url else row["base_url"]
+    api_key = req.api_key if req and req.api_key else row["api_key"]
+    model_name = req.model_name if req and req.model_name else row["model_name"]
+
+    config = AIModelConfig(
+        id=row["id"],
+        config_name=row["config_name"],
+        provider=row["provider"],
+        base_url=base_url,
+        api_key=api_key,
+        model_name=model_name,
+        extra_params=json.loads(row["extra_params"] or "{}"),
+    )
+
+    # 执行测试
+    return _test_llm_connection(config)
+
+
+def _test_llm_connection(config: AIModelConfig) -> dict:
+    """
+    测试 LLM 连接的实际逻辑
+
+    发送简单的 prompt 测试模型响应
+    """
+    provider = config.provider.lower()
+    start_time = time.time()
+
+    try:
+        if provider == "mock":
+            return {
+                "success": True,
+                "message": "Mock 模式，无需连接测试",
+                "provider": provider,
+                "model": config.model_name,
+                "latency_ms": 0,
+                "response_preview": "规则引擎模式",
+            }
+
+        if provider in ("openai", "deepseek", "custom"):
+            return _test_openai_compatible(config, start_time)
+
+        elif provider == "anthropic":
+            return _test_anthropic(config, start_time)
+
+        else:
+            return {
+                "success": False,
+                "message": f"不支持的提供商: {provider}",
+                "provider": provider,
+                "latency_ms": int((time.time() - start_time) * 1000),
+            }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "provider": provider,
+            "model": config.model_name,
+            "latency_ms": int((time.time() - start_time) * 1000),
+        }
+
+
+def _test_openai_compatible(config: AIModelConfig, start_time: float) -> dict:
+    """测试 OpenAI 兼容协议（OpenAI、DeepSeek、Custom）"""
+    from openai import OpenAI
+
+    if not config.api_key:
+        return {
+            "success": False,
+            "message": "API Key 未配置",
+            "provider": config.provider,
+            "latency_ms": int((time.time() - start_time) * 1000),
+        }
+
+    # 设置 base_url
+    base_url = config.base_url
+    if config.provider == "deepseek" and not base_url:
+        base_url = "https://api.deepseek.com/v1"
+
+    if config.provider == "openai" and not base_url:
+        base_url = "https://api.openai.com/v1"
+
+    if not base_url:
+        return {
+            "success": False,
+            "message": "API Base URL 未配置",
+            "provider": config.provider,
+            "latency_ms": int((time.time() - start_time) * 1000),
+        }
+
+    # 创建客户端并发送测试请求
+    client = OpenAI(
+        api_key=config.api_key,
+        base_url=base_url,
+        timeout=30.0,
+    )
+
+    response = client.chat.completions.create(
+        model=config.model_name,
+        messages=[{"role": "user", "content": "Hello, this is a connection test. Please respond with 'OK'."}],
+        max_tokens=10,
+    )
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    content = response.choices[0].message.content or ""
+
+    return {
+        "success": True,
+        "message": f"连接成功，模型响应正常",
+        "provider": config.provider,
+        "model": config.model_name,
+        "base_url": base_url,
+        "latency_ms": latency_ms,
+        "response_preview": content[:100],
+        "tokens_used": {
+            "prompt": response.usage.prompt_tokens,
+            "completion": response.usage.completion_tokens,
+            "total": response.usage.total_tokens,
+        },
+    }
+
+
+def _test_anthropic(config: AIModelConfig, start_time: float) -> dict:
+    """测试 Anthropic Claude 协议"""
+    from anthropic import Anthropic
+
+    if not config.api_key:
+        return {
+            "success": False,
+            "message": "API Key 未配置",
+            "provider": "anthropic",
+            "latency_ms": int((time.time() - start_time) * 1000),
+        }
+
+    # 支持自定义 base_url（如阿里云 GLM）
+    client_kwargs = {
+        "api_key": config.api_key,
+        "timeout": 30.0,
+    }
+    if config.base_url:
+        client_kwargs["base_url"] = config.base_url
+
+    client = Anthropic(**client_kwargs)
+
+    response = client.messages.create(
+        model=config.model_name,
+        max_tokens=10,
+        messages=[{"role": "user", "content": "Hello, this is a connection test. Please respond with 'OK'."}],
+    )
+
+    latency_ms = int((time.time() - start_time) * 1000)
+
+    # 安全解析响应内容（支持 ThinkingBlock 等）
+    content = ""
+    if response.content:
+        for block in response.content:
+            # TextBlock 有 text 属性
+            if hasattr(block, "text"):
+                content += block.text
+            # ThinkingBlock 有 thinking 属性
+            elif hasattr(block, "thinking"):
+                content += block.thinking
+
+    return {
+        "success": True,
+        "message": f"连接成功，模型响应正常",
+        "provider": "anthropic",
+        "model": config.model_name,
+        "latency_ms": latency_ms,
+        "response_preview": content[:100],
+        "tokens_used": {
+            "prompt": response.usage.input_tokens,
+            "completion": response.usage.output_tokens,
+            "total": response.usage.input_tokens + response.usage.output_tokens,
+        },
+    }
+
+
 # ============ 数据源 API ============
 
 @router.get("/datasource")
@@ -290,7 +523,7 @@ def api_list_datasources():
 @router.get("/datasource/active")
 def api_get_active_datasource():
     """获取当前用于问数的数据源（优先级：MySQL配置表 > .env）"""
-    from .config_service import get_query_datasource
+    from app.core.config_service import get_query_datasource
 
     config = get_query_datasource()
 

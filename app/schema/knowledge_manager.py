@@ -7,8 +7,8 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from .config_service import KnowledgeConfig
-from .mysql_tools import get_mysql_connection
+from app.core.config_service import KnowledgeConfig
+from app.core.mysql_tools import get_mysql_connection
 
 
 # ============ 知识 CRUD 操作 ============

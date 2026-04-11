@@ -3,6 +3,24 @@
     <div class="detail-header">
       <el-icon class="mr-2"><Collection /></el-icon>
       <span>智能检索结果</span>
+      <!-- 混合检索状态指示 -->
+      <div v-if="hasHybridResults" class="hybrid-status-badge">
+        <el-icon><Connection /></el-icon>
+        <span>混合检索已激活</span>
+      </div>
+    </div>
+
+    <!-- 检索方法统计 -->
+    <div v-if="hasHybridResults" class="method-stats">
+      <span class="stat-item hybrid">
+        混合: {{ hybridCount }}
+      </span>
+      <span class="stat-item like">
+        关键词: {{ likeOnlyCount }}
+      </span>
+      <span class="stat-item vector">
+        向量: {{ vectorOnlyCount }}
+      </span>
     </div>
 
     <div class="retrieval-tabs">
@@ -50,7 +68,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Collection, Reading, TrendCharts, Grid } from '@element-plus/icons-vue'
+import { Collection, Reading, TrendCharts, Grid, Connection } from '@element-plus/icons-vue'
 import RetrievalList from './RetrievalList.vue'
 
 const props = defineProps<{
@@ -82,6 +100,28 @@ const metadataItems = computed(() => {
   return Array.isArray(hits) ? hits : []
 })
 
+// 检测是否启用了混合检索
+const hasHybridResults = computed(() => {
+  const allItems = [...knowledgeItems.value, ...metricsItems.value, ...metadataItems.value]
+  return allItems.some(item => item['_retrieval_method'] !== undefined)
+})
+
+// 统计各检索方法数量
+const hybridCount = computed(() => {
+  const allItems = [...knowledgeItems.value, ...metricsItems.value, ...metadataItems.value]
+  return allItems.filter(item => item['_retrieval_method'] === 'hybrid').length
+})
+
+const likeOnlyCount = computed(() => {
+  const allItems = [...knowledgeItems.value, ...metricsItems.value, ...metadataItems.value]
+  return allItems.filter(item => item['_retrieval_method'] === 'like_only').length
+})
+
+const vectorOnlyCount = computed(() => {
+  const allItems = [...knowledgeItems.value, ...metricsItems.value, ...metadataItems.value]
+  return allItems.filter(item => item['_retrieval_method'] === 'vector_only').length
+})
+
 const knowledgeFields = [
   { key: 'topic', label: '主题' },
   { key: 'business_meaning', label: '业务含义' },
@@ -111,6 +151,48 @@ const metadataFields = [
   font-weight: 500;
   color: #374151;
   margin-bottom: 12px;
+}
+
+.hybrid-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 4px 8px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.method-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.stat-item {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.stat-item.hybrid {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.stat-item.like {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.stat-item.vector {
+  background: #d1fae5;
+  color: #047857;
 }
 
 .retrieval-tabs {

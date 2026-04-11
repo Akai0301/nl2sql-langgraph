@@ -54,10 +54,11 @@ import type { NodeStatus } from '@/types'
 const store = useQueryStore()
 const containerRef = ref<HTMLElement | null>(null)
 
-// Node positions - arranged in shuttle pattern
+// Node positions - arranged in shuttle pattern (embedding_generation hidden)
 const nodePositions: Record<string, { x: number; y: number }> = {
   start: { x: 50, y: 100 },
   analyze_question: { x: 200, y: 100 },
+  // embedding_generation: hidden from frontend display
   knowledge_retrieval: { x: 400, y: 30 },
   metrics_retrieval: { x: 400, y: 100 },
   metadata_retrieval: { x: 400, y: 170 },

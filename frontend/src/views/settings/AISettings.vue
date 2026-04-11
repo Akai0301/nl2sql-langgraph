@@ -51,13 +51,19 @@
             <span class="text-xs text-gray-500">{{ row.base_url || '默认' }}</span>
           </template>
         </el-table-column>
+        <el-table-column prop="has_api_key" label="API Key" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.has_api_key" type="success" size="small">已配置</el-tag>
+            <el-tag v-else type="danger" size="small">未配置</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="is_active" label="状态" width="100">
           <template #default="{ row }">
             <el-tag v-if="row.is_active" type="success" size="small">激活</el-tag>
             <el-tag v-else type="info" size="small">未激活</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200">
+        <el-table-column label="操作" width="260">
           <template #default="{ row }">
             <el-button-group>
               <el-button
@@ -66,6 +72,9 @@
                 @click="handleActivate(row.id)"
               >
                 激活
+              </el-button>
+              <el-button size="small" @click="handleTest(row)">
+                测试
               </el-button>
               <el-button size="small" @click="handleEdit(row)">编辑</el-button>
               <el-button size="small" type="danger" @click="handleDelete(row.id)">删除</el-button>
@@ -115,18 +124,33 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="API Key" required>
+        <el-form-item label="API Key" :required="!editingConfig">
           <el-input
             v-model="formData.api_key"
-            type="password"
-            show-password
-            placeholder="输入 API Key"
-          />
+            :type="showApiKey ? 'text' : 'password'"
+            :placeholder="editingConfig ? '输入新密钥覆盖原值，留空保留原值' : '输入 API Key'"
+            class="flex-1"
+          >
+            <template #suffix>
+              <el-icon class="cursor-pointer text-gray-600 hover:text-gray-800" @click="toggleApiKeyVisibility">
+                <View v-if="!showApiKey" />
+                <Hide v-else />
+              </el-icon>
+            </template>
+          </el-input>
         </el-form-item>
       </el-form>
 
       <template #footer>
         <el-button @click="showAddDialog = false">取消</el-button>
+        <el-button
+          type="info"
+          @click="handleTestInDialog"
+          :loading="testing"
+          :disabled="!formData.model_name"
+        >
+          测试连接
+        </el-button>
         <el-button type="primary" @click="handleSave">保存</el-button>
       </template>
     </el-dialog>
@@ -136,14 +160,29 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { View, Hide } from '@element-plus/icons-vue'
 import type { AIConfig } from '@/types/settings'
-import { listAIConfigs, createAIConfig, updateAIConfig, deleteAIConfig, activateAIConfig } from '@/api/settings'
+import {
+  listAIConfigs,
+  createAIConfig,
+  updateAIConfig,
+  deleteAIConfig,
+  activateAIConfig,
+  testAIConfig,
+  getAIConfigApiKey,
+  type AITestResult,
+} from '@/api/settings'
 
 const loading = ref(false)
+const testing = ref(false)
 const configs = ref<AIConfig[]>([])
 const activeConfig = ref<AIConfig | null>(null)
 const showAddDialog = ref(false)
 const editingConfig = ref<AIConfig | null>(null)
+const testResult = ref<AITestResult | null>(null)
+
+// API Key 可见性切换
+const showApiKey = ref(false)
 
 const formData = ref({
   config_name: '',
@@ -176,7 +215,8 @@ async function loadConfigs() {
     configs.value = res.items
     activeConfig.value = res.active || null
   } catch (e) {
-    ElMessage.error('加载配置失败')
+    console.error('加载配置失败:', e)
+    ElMessage.error(`加载配置失败: ${(e as Error).message || '未知错误'}`)
   } finally {
     loading.value = false
   }
@@ -198,11 +238,32 @@ async function handleSave() {
     return
   }
 
+  // 构建请求数据，如果 API Key 为空则不传（保留原值）
+  const saveData: Record<string, unknown> = {
+    config_name: formData.value.config_name,
+    model_name: formData.value.model_name,
+    base_url: formData.value.base_url || null,
+  }
+
+  // 只有输入了 API Key 才传递
+  if (formData.value.api_key) {
+    saveData.api_key = formData.value.api_key
+  }
+
   try {
     if (editingConfig.value) {
-      await updateAIConfig(editingConfig.value.id, formData.value)
+      await updateAIConfig(editingConfig.value.id, saveData)
     } else {
-      await createAIConfig(formData.value)
+      // 新建时必须填写 API Key
+      if (!formData.value.api_key) {
+        ElMessage.warning('请填写 API Key')
+        return
+      }
+      await createAIConfig({
+        ...saveData,
+        provider: formData.value.provider,
+        api_key: formData.value.api_key,
+      })
     }
     ElMessage.success('配置已保存')
     showAddDialog.value = false
@@ -223,7 +284,7 @@ async function handleDelete(id: number) {
   }
 }
 
-function handleEdit(config: AIConfig) {
+async function handleEdit(config: AIConfig) {
   editingConfig.value = config
   formData.value = {
     config_name: config.config_name,
@@ -232,7 +293,82 @@ function handleEdit(config: AIConfig) {
     base_url: config.base_url || '',
     api_key: '',
   }
+  showApiKey.value = false
   showAddDialog.value = true
+
+  // 如果已配置 API Key，自动加载显示
+  if (config.has_api_key) {
+    try {
+      const result = await getAIConfigApiKey(config.id)
+      formData.value.api_key = result.api_key
+      showApiKey.value = false  // 默认隐藏，用户可切换
+    } catch (e) {
+      // 加载失败不影响编辑，用户可手动输入
+      console.error('加载 API Key 失败:', e)
+    }
+  }
+}
+
+/**
+ * 切换 API Key 可见性
+ */
+function toggleApiKeyVisibility() {
+  showApiKey.value = !showApiKey.value
+}
+
+/**
+ * 测试已保存的配置
+ */
+async function handleTest(config: AIConfig) {
+  testing.value = true
+  try {
+    const result = await testAIConfig(config.id)
+    if (result.success) {
+      ElMessage.success(`连接成功 (${result.latency_ms}ms)`)
+    } else {
+      ElMessage.error(result.message || '连接失败')
+    }
+  } catch (e: unknown) {
+    ElMessage.error((e as Error).message || '测试失败')
+  } finally {
+    testing.value = false
+  }
+}
+
+/**
+ * 在对话框中测试配置（使用当前表单数据）
+ */
+async function handleTestInDialog() {
+  if (!formData.value.model_name) {
+    ElMessage.warning('请填写模型名称')
+    return
+  }
+
+  // 如果是编辑模式且有 ID，可以测试
+  if (editingConfig.value) {
+    testing.value = true
+    try {
+      // 使用表单数据覆盖数据库配置进行测试
+      const result = await testAIConfig(editingConfig.value.id, {
+        base_url: formData.value.base_url || undefined,
+        api_key: formData.value.api_key || undefined,
+        model_name: formData.value.model_name,
+      })
+      testResult.value = result
+      if (result.success) {
+        ElMessage.success(`连接成功 (${result.latency_ms}ms)`)
+      } else {
+        ElMessage.error(result.message || '连接失败')
+      }
+    } catch (e: unknown) {
+      ElMessage.error((e as Error).message || '测试失败')
+    } finally {
+      testing.value = false
+    }
+  } else {
+    // 新建模式：需要先保存才能测试
+    ElMessage.info('请先保存配置后再测试')
+  }
 }
 
 onMounted(() => {

@@ -1,12 +1,30 @@
 #!/usr/bin/env node
 /**
- * Stop Hook - Claude 回答结束时触发
+ * Stop Hook - Claude 回话结束时触发
  * 功能: nul 文件清理 + 完成音效
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+
+/**
+ * 查找项目根目录（包含 .claude 目录的目录）
+ * 支持从任意子目录运行时正确定位
+ */
+function findProjectRoot(startDir) {
+  let dir = startDir;
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.claude'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  // 如果找不到，返回当前目录
+  return startDir;
+}
+
+const projectRoot = findProjectRoot(process.cwd());
 
 // 清理可能误创建的 nul 文件（Windows 下 > nul 可能创建该文件）
 // nul 文件由 Bash `> nul` 命令产生，通常只在浅层目录，深度限制为 2
@@ -28,10 +46,10 @@ const findAndDeleteNul = (dir, depth = 0) => {
     // 访问失败时静默忽略
   }
 };
-findAndDeleteNul(process.cwd());
+findAndDeleteNul(projectRoot);
 
-// 播放完成音效（可选）
-const audioFile = path.join(process.cwd(), '.claude', 'audio', 'completed.wav');
+// 播放完成音效（可选）- 使用项目根目录
+const audioFile = path.join(projectRoot, '.claude', 'audio', 'completed.wav');
 try {
   if (fs.existsSync(audioFile)) {
     const platform = process.platform;

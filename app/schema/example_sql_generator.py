@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .schema_engine import SchemaUnderstanding, TableInfo, FieldInfo
+from app.schema.engine import SchemaUnderstanding, TableInfo, FieldInfo
 
 
 @dataclass

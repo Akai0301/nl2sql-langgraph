@@ -12,8 +12,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .config_service import AIModelConfig, get_active_ai_config
-from .llm_provider import create_llm
+from app.core.config_service import AIModelConfig, get_active_ai_config
+from app.core.llm_provider import create_llm
 
 
 @dataclass
@@ -60,7 +60,7 @@ QUESTION_ANALYSIS_PROMPT = """你是一个 NL2SQL 系统的问题分析专家。
   "metrics": ["提及的指标，如销售额、订单量等"],
   "dimensions": ["提及的维度，如地区、产品、时间等"],
   "time_range": "时间范围描述，如最近30天、2024年Q1",
-  "filters": {{"字段名": "值"}，如 {{"地区": "华东"}}},
+  "filters": {{"字段名": "值"}},
   "aggregation": "聚合方式（sum/count/avg/max/min）",
   "limit": 数字或 null
 }}
@@ -70,6 +70,7 @@ QUESTION_ANALYSIS_PROMPT = """你是一个 NL2SQL 系统的问题分析专家。
 - intent 类型说明：query=简单查询, compare=对比分析, trend=趋势分析, rank=排名, statistics=统计
 - metrics 是指标名称，通常是数值型概念
 - dimensions 是分组维度，通常用于 GROUP BY
+- filters 是过滤条件，例如地区为华东时写 {{"region": "华东"}}
 - 只输出 JSON，不要输出其他内容"""
 
 FIELD_MATCHING_PROMPT = """你是一个 NL2SQL 系统的字段匹配专家。请根据问题分析结果，从候选字段中选择最相关的字段。

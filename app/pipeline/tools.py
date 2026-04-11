@@ -55,7 +55,7 @@ def execute_sql(sql: str, datasource_id: int | None = None) -> dict[str, Any]:
     validated_sql, _ = safe_sql_validate(sql, max_rows)
 
     # 使用数据源管理器执行 SQL
-    from .datasource_manager import execute_sql_on_datasource
+    from app.core.datasource_manager import execute_sql_on_datasource
 
     return execute_sql_on_datasource(validated_sql, ds_id=datasource_id, max_rows=max_rows)
 
@@ -165,7 +165,7 @@ def fetch_schema_cache(datasource_id: int) -> SchemaCacheResult | None:
     Returns:
         Schema 缓存结果，如果不存在则返回 None
     """
-    from .mysql_tools import get_mysql_connection
+    from app.core.mysql_tools import get_mysql_connection
 
     conn = get_mysql_connection()
     with conn.cursor() as cur:
@@ -314,7 +314,11 @@ def format_mschema_context(
     if foreign_keys:
         lines.append("### 外键关系:")
         for fk in foreign_keys:
-            lines.append(f"- {fk[0]}.{fk[1]} → {fk[2]}.{fk[3]}")
+            # 支持两种格式：dict 或 tuple
+            if isinstance(fk, dict):
+                lines.append(f"- {fk.get('from_table', '')}.{fk.get('from_column', '')} → {fk.get('to_table', '')}.{fk.get('to_column', '')}")
+            else:
+                lines.append(f"- {fk[0]}.{fk[1]} → {fk[2]}.{fk[3]}")
         lines.append("")
 
     return "\n".join(lines)
@@ -392,7 +396,7 @@ def semantic_field_matching(
 
     # 调用语义匹配服务
     try:
-        from .semantic_matcher import SemanticMatcher
+        from app.pipeline.semantic_matcher import SemanticMatcher
         matcher = SemanticMatcher()
         result = matcher.full_match(
             question=question,
@@ -471,7 +475,7 @@ def fetch_example_sqls(datasource_id: int) -> list[dict[str, Any]]:
     Returns:
         示例 SQL 列表
     """
-    from .mysql_tools import get_mysql_connection
+    from app.core.mysql_tools import get_mysql_connection
 
     conn = get_mysql_connection()
     with conn.cursor() as cur:
@@ -517,4 +521,464 @@ def format_example_sqls_context(example_sqls: list[dict[str, Any]]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+# ============================================
+# 混合检索 + RRF 融合（Phase 3 新增）
+# ============================================
+
+def reciprocal_rank_fusion(
+    like_results: list[dict[str, Any]],
+    vector_results: list[dict[str, Any]],
+    k: int = 60,
+) -> list[dict[str, Any]]:
+    """
+    RRF 算法融合 LIKE 检索和向量检索结果
+
+    公式: RRF_score(d) = Σ 1/(k + rank_i(d))
+
+    Args:
+        like_results: LIKE 检索结果（按匹配顺序）
+        vector_results: 向量检索结果（按 cosine_distance 升序）
+        k: RRF 参数（默认 60）
+
+    Returns:
+        融合结果，包含 rrf_score 字段，按 rrf_score 降序排列
+    """
+    # 使用字典存储分数和元数据
+    rrf_scores: dict[int, dict[str, Any]] = {}
+
+    # LIKE 结果排名（排名越靠前分数越高）
+    for rank, item in enumerate(like_results, 1):
+        item_id = item.get("id")
+        if item_id is None:
+            continue
+
+        if item_id not in rrf_scores:
+            rrf_scores[item_id] = {
+                "item": item.copy(),
+                "rrf_score": 0.0,
+                "like_rank": rank,
+                "vector_rank": None,
+                "cosine_distance": None,
+            }
+
+        rrf_scores[item_id]["rrf_score"] += 1.0 / (k + rank)
+        rrf_scores[item_id]["like_rank"] = rank
+
+    # 向量结果排名
+    for rank, item in enumerate(vector_results, 1):
+        item_id = item.get("id")
+        if item_id is None:
+            continue
+
+        cosine_distance = item.get("cosine_distance")
+
+        if item_id not in rrf_scores:
+            rrf_scores[item_id] = {
+                "item": item.copy(),
+                "rrf_score": 0.0,
+                "like_rank": None,
+                "vector_rank": rank,
+                "cosine_distance": cosine_distance,
+            }
+
+        rrf_scores[item_id]["rrf_score"] += 1.0 / (k + rank)
+        rrf_scores[item_id]["vector_rank"] = rank
+
+        # 更新 cosine_distance（如果之前没有）
+        if rrf_scores[item_id]["cosine_distance"] is None:
+            rrf_scores[item_id]["cosine_distance"] = cosine_distance
+
+    # 组装结果并计算 cosine_similarity
+    fused_results = []
+    for item_id, data in rrf_scores.items():
+        result = data["item"]
+        result["rrf_score"] = round(data["rrf_score"], 6)
+        result["like_rank"] = data["like_rank"]
+        result["vector_rank"] = data["vector_rank"]
+        result["cosine_distance"] = data["cosine_distance"]
+
+        # 计算 cosine_similarity（如果存在 cosine_distance）
+        if data["cosine_distance"] is not None:
+            result["cosine_similarity"] = round(1.0 - data["cosine_distance"], 6)
+        else:
+            result["cosine_similarity"] = None
+
+        # 标记检索来源方式
+        like_rank = data["like_rank"]
+        vector_rank = data["vector_rank"]
+        if like_rank is not None and vector_rank is not None:
+            result["_retrieval_method"] = "hybrid"  # LIKE + 向量融合
+        elif like_rank is not None:
+            result["_retrieval_method"] = "like_only"  # 仅 LIKE
+        else:
+            result["_retrieval_method"] = "vector_only"  # 仅向量
+
+        fused_results.append(result)
+
+    # 按 rrf_score 降序排列
+    fused_results.sort(key=lambda x: x["rrf_score"], reverse=True)
+
+    return fused_results
+
+
+def vector_search(
+    table: str,
+    query_embedding: list[float],
+    embedding_column: str,
+    select_columns: list[str],
+    top_k: int = 20,
+) -> list[dict[str, Any]]:
+    """
+    PostgreSQL 向量检索（pgvector）
+
+    使用余弦距离: embedding <=> query_vector
+    返回 cosine_distance（越小越相似）
+
+    Args:
+        table: 表名
+        query_embedding: 查询向量（1024 维）
+        embedding_column: embedding 字段名
+        select_columns: 返回字段列表
+        top_k: 返回数量
+
+    Returns:
+        检索结果，包含 cosine_distance 字段
+    """
+    dsn = get_postgres_dsn()
+
+    # 格式化向量
+    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+
+    # 构建向量检索 SQL
+    sql = f"""
+        SELECT {", ".join(select_columns)},
+               {embedding_column} <=> '{embedding_str}'::vector AS cosine_distance
+        FROM {table}
+        WHERE {embedding_column} IS NOT NULL
+        ORDER BY cosine_distance ASC
+        LIMIT {top_k}
+    """
+
+    with psycopg.connect(dsn) as conn:
+        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            cur.execute(sql)
+            results = cur.fetchall()
+
+            # 计算 cosine_similarity
+            for r in results:
+                if r.get("cosine_distance") is not None:
+                    r["cosine_similarity"] = 1.0 - r["cosine_distance"]
+
+            return results
+
+
+def hybrid_knowledge_search(
+    keywords: list[str],
+    query_embedding: list[float],
+    top_k: int = 20,
+    rrf_k: int = 60,
+) -> list[dict[str, Any]]:
+    """
+    企业知识库混合检索：LIKE + 向量并行，RRF 融合
+
+    Args:
+        keywords: LIKE 搜索关键词列表
+        query_embedding: 查询向量
+        top_k: 各路检索数量
+        rrf_k: RRF 参数
+
+    Returns:
+        融合结果，包含 rrf_score、like_rank、vector_rank、cosine_similarity
+    """
+    dsn = get_postgres_dsn()
+    select_columns = ["id", "topic", "keyword_synonyms", "business_meaning", "example_question", "example_sql_template"]
+
+    # 1. LIKE 检索（原有逻辑）
+    like_results = []
+    if keywords:
+        terms = [k.strip().lower() for k in keywords if k.strip()]
+        patterns = [f"%{t}%" for t in terms]
+        sql = """
+            SELECT {0}
+            FROM enterprise_kb
+            WHERE lower(keyword_synonyms) LIKE ANY (%s)
+               OR lower(business_meaning) LIKE ANY (%s)
+            ORDER BY id
+            LIMIT {1}
+        """.format(", ".join(select_columns), top_k)
+
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(sql, (patterns, patterns))
+                like_results = cur.fetchall()
+
+    # 2. 向量检索（多 embedding 字段：keyword_embedding + business_embedding）
+    vector_results = []
+
+    # 检索 keyword_embedding
+    keyword_hits = vector_search(
+        table="enterprise_kb",
+        query_embedding=query_embedding,
+        embedding_column="keyword_embedding",
+        select_columns=select_columns,
+        top_k=top_k,
+    )
+    vector_results.extend(keyword_hits)
+
+    # 检索 business_embedding
+    business_hits = vector_search(
+        table="enterprise_kb",
+        query_embedding=query_embedding,
+        embedding_column="business_embedding",
+        select_columns=select_columns,
+        top_k=top_k,
+    )
+    vector_results.extend(business_hits)
+
+    # 去重（按 id）
+    seen_ids: set[int] = set()
+    unique_vector_results: list[dict[str, Any]] = []
+    for item in vector_results:
+        item_id = item.get("id")
+        if item_id not in seen_ids:
+            seen_ids.add(item_id)
+            unique_vector_results.append(item)
+        else:
+            # 如果已存在，更新为更小的 cosine_distance
+            for existing in unique_vector_results:
+                if existing.get("id") == item_id:
+                    if item.get("cosine_distance") is not None and existing.get("cosine_distance") is not None:
+                        if item["cosine_distance"] < existing["cosine_distance"]:
+                            existing["cosine_distance"] = item["cosine_distance"]
+                    break
+
+    # 按 cosine_distance 重新排序
+    unique_vector_results.sort(
+        key=lambda x: x.get("cosine_distance", 1.0) if x.get("cosine_distance") is not None else 1.0
+    )
+    unique_vector_results = unique_vector_results[:top_k]
+
+    # 3. RRF 融合
+    fused_results = reciprocal_rank_fusion(like_results, unique_vector_results, rrf_k)
+
+    return fused_results[:top_k]
+
+
+def hybrid_metrics_search(
+    keywords: list[str],
+    query_embedding: list[float],
+    top_k: int = 20,
+    rrf_k: int = 60,
+) -> list[dict[str, Any]]:
+    """
+    指标目录混合检索：LIKE + 向量并行，RRF 融合
+
+    Args:
+        keywords: LIKE 搜索关键词列表
+        query_embedding: 查询向量
+        top_k: 各路检索数量
+        rrf_k: RRF 参数
+
+    Returns:
+        融合结果，包含 rrf_score、like_rank、vector_rank、cosine_similarity
+    """
+    dsn = get_postgres_dsn()
+    select_columns = ["id", "metric_name", "metric_synonyms", "business_definition", "aggregation_rule", "target_column"]
+
+    # 1. LIKE 检索
+    like_results = []
+    if keywords:
+        terms = [k.strip().lower() for k in keywords if k.strip()]
+        patterns = [f"%{t}%" for t in terms]
+        sql = """
+            SELECT {0}
+            FROM metrics_catalog
+            WHERE lower(metric_synonyms) LIKE ANY (%s)
+               OR lower(metric_name) LIKE ANY (%s)
+            ORDER BY id
+            LIMIT {1}
+        """.format(", ".join(select_columns), top_k)
+
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(sql, (patterns, patterns))
+                like_results = cur.fetchall()
+
+    # 2. 向量检索（metric_embedding + synonym_embedding）
+    vector_results = []
+
+    metric_hits = vector_search(
+        table="metrics_catalog",
+        query_embedding=query_embedding,
+        embedding_column="metric_embedding",
+        select_columns=select_columns,
+        top_k=top_k,
+    )
+    vector_results.extend(metric_hits)
+
+    synonym_hits = vector_search(
+        table="metrics_catalog",
+        query_embedding=query_embedding,
+        embedding_column="synonym_embedding",
+        select_columns=select_columns,
+        top_k=top_k,
+    )
+    vector_results.extend(synonym_hits)
+
+    # 去重
+    seen_ids: set[int] = set()
+    unique_vector_results: list[dict[str, Any]] = []
+    for item in vector_results:
+        item_id = item.get("id")
+        if item_id not in seen_ids:
+            seen_ids.add(item_id)
+            unique_vector_results.append(item)
+
+    unique_vector_results.sort(
+        key=lambda x: x.get("cosine_distance", 1.0) if x.get("cosine_distance") is not None else 1.0
+    )
+    unique_vector_results = unique_vector_results[:top_k]
+
+    # 3. RRF 融合
+    fused_results = reciprocal_rank_fusion(like_results, unique_vector_results, rrf_k)
+
+    return fused_results[:top_k]
+
+
+def hybrid_metadata_search(
+    topics_or_metrics: list[str],
+    query_embedding: list[float],
+    top_k: int = 30,
+    rrf_k: int = 60,
+) -> list[dict[str, Any]]:
+    """
+    元数据混合检索：LIKE + 向量并行，RRF 融合
+
+    Args:
+        topics_or_metrics: LIKE 搜索的主题或指标列表
+        query_embedding: 查询向量
+        top_k: 各路检索数量
+        rrf_k: RRF 参数
+
+    Returns:
+        融合结果，包含 rrf_score、like_rank、vector_rank、cosine_similarity
+    """
+    dsn = get_postgres_dsn()
+    select_columns = [
+        "id", "topic", "metric_name",
+        "fact_table", "fact_time_column", "fact_region_column",
+        "dimension_table", "dimension_join_key", "dimension_region_key",
+        "measure_column", "measure_sql_expression", "grain"
+    ]
+
+    # 1. LIKE 检索
+    like_results = []
+    if topics_or_metrics:
+        terms = [t.strip().lower() for t in topics_or_metrics if t.strip()]
+        patterns = [f"%{t}%" for t in terms]
+        sql = """
+            SELECT {0}
+            FROM lake_table_metadata
+            WHERE lower(topic) LIKE ANY (%s)
+               OR lower(metric_name) LIKE ANY (%s)
+            ORDER BY id
+            LIMIT {1}
+        """.format(", ".join(select_columns), top_k)
+
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(sql, (patterns, patterns))
+                like_results = cur.fetchall()
+
+    # 2. 向量检索（topic_embedding + metric_embedding）
+    vector_results = []
+
+    topic_hits = vector_search(
+        table="lake_table_metadata",
+        query_embedding=query_embedding,
+        embedding_column="topic_embedding",
+        select_columns=select_columns,
+        top_k=top_k,
+    )
+    vector_results.extend(topic_hits)
+
+    metric_hits = vector_search(
+        table="lake_table_metadata",
+        query_embedding=query_embedding,
+        embedding_column="metric_embedding",
+        select_columns=select_columns,
+        top_k=top_k,
+    )
+    vector_results.extend(metric_hits)
+
+    # 去重
+    seen_ids: set[int] = set()
+    unique_vector_results: list[dict[str, Any]] = []
+    for item in vector_results:
+        item_id = item.get("id")
+        if item_id not in seen_ids:
+            seen_ids.add(item_id)
+            unique_vector_results.append(item)
+
+    unique_vector_results.sort(
+        key=lambda x: x.get("cosine_distance", 1.0) if x.get("cosine_distance") is not None else 1.0
+    )
+    unique_vector_results = unique_vector_results[:top_k]
+
+    # 3. RRF 融合
+    fused_results = reciprocal_rank_fusion(like_results, unique_vector_results, rrf_k)
+
+    return fused_results[:top_k]
+
+
+async def hybrid_search_all(
+    keywords: list[str],
+    question: str,
+    top_k: int = 20,
+    rrf_k: int = 60,
+) -> dict[str, list[dict[str, Any]]]:
+    """
+    全量混合检索：并行检索知识库、指标、元数据
+
+    生成问题向量后，并行执行三路混合检索
+
+    Args:
+        keywords: 关键词列表（用于 LIKE 检索）
+        question: 用户问题（用于生成向量）
+        top_k: 各路检索数量
+        rrf_k: RRF 参数
+
+    Returns:
+        {
+            "knowledge_hits": [...],
+            "metrics_hits": [...],
+            "metadata_hits": [...]
+        }
+        每个结果包含 rrf_score
+    """
+    from app.core.embedding_service import embed_query
+
+    # 生成查询向量
+    query_embedding = await embed_query(question)
+
+    # 并行检索（这里用同步函数，实际可在 LangGraph 节点中异步调用）
+    knowledge_hits = hybrid_knowledge_search(keywords, query_embedding, top_k, rrf_k)
+    metrics_hits = hybrid_metrics_search(keywords, query_embedding, top_k, rrf_k)
+
+    # 元数据检索使用 metrics_hits 的 metric_name 作为输入
+    metric_names = [h.get("metric_name") for h in metrics_hits if h.get("metric_name")]
+    metadata_hits = hybrid_metadata_search(
+        topics_or_metrics=keywords + metric_names,
+        query_embedding=query_embedding,
+        top_k=30,
+        rrf_k=rrf_k,
+    )
+
+    return {
+        "knowledge_hits": knowledge_hits,
+        "metrics_hits": metrics_hits,
+        "metadata_hits": metadata_hits,
+    }
 

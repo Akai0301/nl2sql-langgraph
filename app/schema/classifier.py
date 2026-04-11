@@ -18,11 +18,11 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Literal
 
-from .config_service import AIModelConfig
-from .llm_provider import create_llm
+from app.core.config_service import AIModelConfig
+from app.core.llm_provider import create_llm
 
 if TYPE_CHECKING:
-    from .schema_engine import FieldInfo, SchemaUnderstanding
+    from app.schema.engine import FieldInfo, SchemaUnderstanding
 
 FieldType = Literal["DateTime", "Enum", "Code", "Text", "Measure"]
 

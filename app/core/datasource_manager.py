@@ -4,15 +4,34 @@
 """
 from __future__ import annotations
 
-import os
 import sqlite3
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Optional
 
 import psycopg
 import pymysql
 from pymysql.cursors import DictCursor
 
-from .config_service import DataSourceConfig, get_datasource_by_id, get_datasource_by_name, get_query_datasource
+from app.core.config_service import DataSourceConfig, get_datasource_by_id, get_datasource_by_name, get_query_datasource
+
+
+def _serialize_value(value: Any) -> Any:
+    """将值序列化为 JSON 可格式化的类型"""
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, bytes):
+        return value.decode('utf-8', errors='replace')
+    return value
+
+
+def _serialize_rows(rows: list[tuple]) -> list[list]:
+    """序列化多行数据，确保所有值都是 JSON 可格式化的"""
+    return [[_serialize_value(v) for v in row] for row in rows]
 
 
 # 当前请求的数据源（请求级别，用于动态切换）
@@ -123,9 +142,12 @@ def _execute_postgresql(
                 if len(rows) > max_rows:
                     rows = rows[:max_rows]
 
+                # 序列化行数据（处理 datetime 等类型）
+                serialized_rows = _serialize_rows([list(r) for r in rows])
+
                 return {
                     "columns": columns,
-                    "rows": [list(r) for r in rows],
+                    "rows": serialized_rows,
                     "row_count": len(rows),
                 }
 
@@ -159,10 +181,13 @@ def _execute_mysql(
                 if len(rows) > max_rows:
                     rows = rows[:max_rows]
 
-                # DictCursor 返回字典，转换为列表
+                # DictCursor 返回字典，转换为列表并序列化
+                raw_rows = [[row.get(col) for col in columns] for row in rows]
+                serialized_rows = _serialize_rows(raw_rows)
+
                 return {
                     "columns": columns,
-                    "rows": [[row.get(col) for col in columns] for row in rows],
+                    "rows": serialized_rows,
                     "row_count": len(rows),
                 }
 
