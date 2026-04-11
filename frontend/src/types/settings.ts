@@ -5,6 +5,7 @@ export interface AIConfig {
   provider: 'openai' | 'anthropic' | 'deepseek' | 'custom'
   base_url: string | null
   api_key: string | null
+  has_api_key?: boolean  // 标记是否已配置 API Key
   model_name: string
   is_active: boolean
   extra_params: Record<string, unknown>

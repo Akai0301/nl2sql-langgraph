@@ -1,13 +1,20 @@
 # 系统设置接口文档
 
 > **模块路径**：`/settings`
-> **最后更新**：2026-04-03
+> **最后更新**：2026-04-08
 > **负责人**：后端
 
 ---
 
 ## 目录
 
+- [AI 模型配置接口](#ai-模型配置接口)
+  - [列出所有 AI 配置](#列出所有-ai-配置)
+  - [创建 AI 配置](#创建-ai-配置)
+  - [更新 AI 配置](#更新-ai-配置)
+  - [删除 AI 配置](#删除-ai-配置)
+  - [激活 AI 配置](#激活-ai-配置)
+  - [测试 AI 配置连接](#测试-ai-配置连接)
 - [数据源接口](#数据源接口)
   - [获取当前激活数据源](#获取当前激活数据源)
   - [列出所有数据源](#列出所有数据源)
@@ -19,6 +26,281 @@
   - [获取 Schema 缓存](#获取-schema-缓存)
   - [获取表列表](#获取表列表)
   - [获取表 Schema](#获取表-schema)
+
+---
+
+## AI 模型配置接口
+
+### 列出所有 AI 配置
+
+**接口路径**：`GET /settings/ai`
+**接口描述**：获取所有 AI 模型配置列表及当前激活的配置
+**是否需要登录**：否
+
+#### 响应参数
+
+| 参数名 | 类型 | 说明 |
+|-------|------|------|
+| items | Array | AI 配置列表 |
+| items[].id | Integer | 配置ID |
+| items[].configName | String | 配置名称 |
+| items[].provider | String | 提供商：openai/anthropic/deepseek/custom |
+| items[].baseUrl | String | API Base URL |
+| items[].apiKey | String | API Key（已脱敏，显示为 ***） |
+| items[].modelName | String | 模型名称 |
+| items[].isActive | Boolean | 是否激活 |
+| items[].extraParams | Object | 额外参数 |
+| active | Object | 当前激活的配置，无激活时为 null |
+| active.id | Integer | 配置ID |
+| active.configName | String | 配置名称 |
+| active.provider | String | 提供商 |
+| active.modelName | String | 模型名称 |
+
+#### 响应示例
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "config_name": "生产环境-GPT4",
+      "provider": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "***",
+      "model_name": "gpt-4o",
+      "is_active": true,
+      "extra_params": {}
+    },
+    {
+      "id": 2,
+      "config_name": "DeepSeek 测试",
+      "provider": "deepseek",
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key": "***",
+      "model_name": "deepseek-chat",
+      "is_active": false,
+      "extra_params": {}
+    }
+  ],
+  "active": {
+    "id": 1,
+    "config_name": "生产环境-GPT4",
+    "provider": "openai",
+    "model_name": "gpt-4o"
+  }
+}
+```
+
+---
+
+### 创建 AI 配置
+
+**接口路径**：`POST /settings/ai`
+**接口描述**：创建新的 AI 模型配置
+**是否需要登录**：否
+**请求格式**：`application/json`
+
+#### 请求体（Body）
+
+| 参数名 | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| configName | String | 是 | 配置名称（1-100字符） |
+| provider | String | 是 | 提供商：openai/anthropic/deepseek/custom |
+| baseUrl | String | 否 | API Base URL（custom 时必填） |
+| apiKey | String | 否 | API Key |
+| modelName | String | 是 | 模型名称 |
+| extraParams | Object | 否 | 额外参数（temperature、max_tokens 等） |
+
+#### 响应示例
+
+```json
+{
+  "id": 3,
+  "config_name": "新配置",
+  "provider": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "model_name": "gpt-4o-mini"
+}
+```
+
+#### 错误响应
+
+```json
+{
+  "detail": "配置名称已存在"
+}
+```
+
+---
+
+### 更新 AI 配置
+
+**接口路径**：`PATCH /settings/ai/{config_id}`
+**接口描述**：更新 AI 模型配置
+**是否需要登录**：否
+**请求格式**：`application/json`
+
+#### 路径参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| configId | Integer | 是 | 配置ID |
+
+#### 请求体（Body）
+
+| 参数名 | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| configName | String | 否 | 配置名称 |
+| baseUrl | String | 否 | API Base URL |
+| apiKey | String | 否 | API Key |
+| modelName | String | 否 | 模型名称 |
+| extraParams | Object | 否 | 额外参数 |
+
+#### 响应示例
+
+```json
+{
+  "id": 1,
+  "config_name": "生产环境-GPT4",
+  "provider": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "model_name": "gpt-4o",
+  "is_active": true
+}
+```
+
+---
+
+### 删除 AI 配置
+
+**接口路径**：`DELETE /settings/ai/{config_id}`
+**接口描述**：删除 AI 模型配置（无法删除激活中的配置）
+**是否需要登录**：否
+
+#### 路径参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| configId | Integer | 是 | 配置ID |
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "message": "配置已删除"
+}
+```
+
+#### 错误响应
+
+```json
+{
+  "detail": "无法删除激活中的配置"
+}
+```
+
+---
+
+### 激活 AI 配置
+
+**接口路径**：`POST /settings/ai/{config_id}/activate`
+**接口描述**：激活指定 AI 配置
+**是否需要登录**：否
+
+#### 路径参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| configId | Integer | 是 | 配置ID |
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "message": "配置已激活"
+}
+```
+
+---
+
+### 测试 AI 配置连接
+
+**接口路径**：`POST /settings/ai/{config_id}/test`
+**接口描述**：测试 AI 模型配置连接，验证 API Key、Base URL 和模型是否可用
+**是否需要登录**：否
+**请求格式**：`application/json`
+
+#### 路径参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| configId | Integer | 是 | 配置ID |
+
+#### 请求体（Body）- 可选参数覆盖
+
+| 参数名 | 类型 | 必填 | 说明 |
+|-------|------|------|------|
+| baseUrl | String | 否 | 覆盖数据库中的 Base URL |
+| apiKey | String | 否 | 覆盖数据库中的 API Key |
+| modelName | String | 否 | 覆盖数据库中的模型名称 |
+
+#### 响应参数
+
+| 参数名 | 类型 | 说明 |
+|-------|------|------|
+| success | Boolean | 是否成功 |
+| message | String | 结果消息 |
+| provider | String | 提供商 |
+| model | String | 模型名称 |
+| baseUrl | String | 实际使用的 Base URL |
+| latencyMs | Integer | 响应延迟（毫秒） |
+| responsePreview | String | 模型响应预览（前100字符） |
+| tokensUsed | Object | Token 使用量 |
+| tokensUsed.prompt | Integer | 输入 Token 数 |
+| tokensUsed.completion | Integer | 输出 Token 数 |
+| tokensUsed.total | Integer | 总 Token 数 |
+
+#### 响应示例（成功）
+
+```json
+{
+  "success": true,
+  "message": "连接成功，模型响应正常",
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "base_url": "https://api.openai.com/v1",
+  "latency_ms": 1250,
+  "response_preview": "OK",
+  "tokens_used": {
+    "prompt": 15,
+    "completion": 2,
+    "total": 17
+  }
+}
+```
+
+#### 响应示例（失败）
+
+```json
+{
+  "success": false,
+  "message": "Incorrect API key provided: sk-xxx. You can find your API key at https://platform.openai.com/api-keys.",
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "latency_ms": 320
+}
+```
+
+#### 支持的提供商
+
+| 提供商 | 说明 |
+|-------|------|
+| openai | OpenAI 官方 API |
+| anthropic | Anthropic Claude API |
+| deepseek | DeepSeek API（兼容 OpenAI 协议） |
+| custom | 自定义 OpenAI 兼容 API |
 
 ---
 

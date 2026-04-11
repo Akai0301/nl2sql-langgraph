@@ -11,6 +11,24 @@
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * 查找项目根目录（包含 .claude 目录的目录）
+ * 支持从任意子目录运行时正确定位
+ */
+function findProjectRoot(startDir) {
+  let dir = startDir;
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.claude'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  // 如果找不到，返回当前目录
+  return startDir;
+}
+
+const projectRoot = findProjectRoot(process.cwd());
+
 // 从 stdin 读取用户输入
 let inputData = '';
 try {
@@ -75,7 +93,7 @@ const hasCorrection = correctionKeywords.some(kw => prompt.includes(kw));
 // 读取项目经验库的规则速查表，注入到每次会话作为背景知识
 let lessonsInjection = '';
 try {
-  const lessonsPath = path.join(process.cwd(), '.claude', 'memory', 'lessons.md');
+  const lessonsPath = path.join(projectRoot, '.claude', 'memory', 'lessons.md');
   if (fs.existsSync(lessonsPath)) {
     const lessonsContent = fs.readFileSync(lessonsPath, 'utf8');
     // 提取 RULES_START 和 RULES_END 之间的内容（规则速查表）
@@ -89,7 +107,7 @@ try {
 }
 
 // 检测是否存在前端目录（frontend/）
-const hasFrontend = fs.existsSync(path.join(process.cwd(), 'frontend'));
+const hasFrontend = fs.existsSync(path.join(projectRoot, 'frontend'));
 
 // 联动触发规则（根据项目类型动态生成）
 const cascadeRulesSection = hasFrontend ? `**联动触发规则（自动追加，不需要用户明确说"接口文档"或"前台同步"）**：

@@ -55,6 +55,56 @@ export async function activateAIConfig(id: number): Promise<void> {
   if (!response.ok) throw new Error('Failed to activate AI config')
 }
 
+/**
+ * 获取 AI 配置的 API Key（用于前端显示已保存的密钥）
+ */
+export async function getAIConfigApiKey(id: number): Promise<{ api_key: string }> {
+  const response = await fetch(`${API_BASE}/settings/ai/${id}/api-key`)
+  if (!response.ok) throw new Error('Failed to get API key')
+  return response.json()
+}
+
+export interface AITestRequest {
+  base_url?: string
+  api_key?: string
+  model_name?: string
+}
+
+export interface AITestResult {
+  success: boolean
+  message: string
+  provider: string
+  model?: string
+  base_url?: string
+  latency_ms: number
+  response_preview?: string
+  tokens_used?: {
+    prompt: number
+    completion: number
+    total: number
+  }
+}
+
+/**
+ * 测试 AI 配置连接
+ * 可选参数覆盖数据库配置，用于保存前预测试
+ */
+export async function testAIConfig(
+  id: number,
+  overrides?: AITestRequest
+): Promise<AITestResult> {
+  const response = await fetch(`${API_BASE}/settings/ai/${id}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(overrides || {}),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Failed to test AI config')
+  }
+  return response.json()
+}
+
 // ============ 数据源 API ============
 
 export async function listDatasources(): Promise<{ items: DataSourceConfig[] }> {

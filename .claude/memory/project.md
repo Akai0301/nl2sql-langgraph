@@ -32,6 +32,9 @@
 | State | LangGraph 状态，使用 TypedDict 定义 |
 | Node | LangGraph 节点函数，接收 State 返回 dict |
 | 并行边 | StateGraph 中的多路径并行执行 |
+| 混合检索 | LIKE 关键词匹配 + 向量语义检索并行，RRF 融合排序 |
+| RRF 融合 | Reciprocal Rank Fusion，多路检索结果融合算法 |
+| Embedding | 文本向量嵌入，用于语义相似度计算 |
 
 ### 业务术语
 | 术语 | 说明 |
@@ -41,6 +44,8 @@
 | 元数据检索 | 从 lake_table_metadata 表检索表结构和字段映射 |
 | Mock 模式 | 基于规则引擎生成 SQL，无需 LLM API |
 | LLM 模式 | 调用 OpenAI API 生成 SQL |
+| 向量检索 | 使用 pgvector 扩展进行语义相似度检索 |
+| 余弦距离 | 向量相似度度量，越小越相似（0-2） |
 
 ---
 
@@ -71,8 +76,16 @@
 ### 数据库
 | 数据库 | 用途 |
 |--------|------|
-| PostgreSQL | 问数业务数据（知识库、指标、元数据、事实表） |
+| PostgreSQL | 问数业务数据（知识库、指标、元数据、事实表）+ pgvector 向量检索 |
 | MySQL | 平台数据（会话、历史记录） |
+
+### Embedding 服务
+| 配置项 | 说明 |
+|--------|------|
+| **API 提供商** | 通义千问 DashScope（兼容 OpenAI 协议） |
+| **模型** | text-embedding-v3 |
+| **向量维度** | 1024 |
+| **环境变量** | `QWEN_API_KEY`（必填）、`QWEN_API_BASE`（默认 DashScope） |
 
 ---
 
@@ -205,8 +218,11 @@ nl2sql-langgraph/
 | `business_meaning` | TEXT | 业务含义解释 |
 | `example_question` | TEXT | 示例问题 |
 | `example_sql_template` | TEXT | 示例 SQL 模板 |
+| `keyword_embedding` | vector(1024) | 关键词向量（用于语义检索） |
+| `business_embedding` | vector(1024) | 业务含义向量（用于语义检索） |
 
-**NL2SQL 作用**：`retrieve_knowledge_node` 节点从中检索业务术语、同义词映射、示例 SQL
+**NL2SQL 作用**：`knowledge_retrieval_node` 节点从中检索业务术语、同义词映射、示例 SQL
+**混合检索**：LIKE 匹配 keyword_synonyms + 向量检索 keyword_embedding/business_embedding，RRF 融合
 
 #### metrics_catalog（指标口径目录）
 | 字段 | 类型 | 说明 |
@@ -217,8 +233,11 @@ nl2sql-langgraph/
 | `business_definition` | TEXT | 业务定义 |
 | `aggregation_rule` | TEXT | 聚合规则（SUM/COUNT/AVG 等） |
 | `target_column` | TEXT | 目标列名 |
+| `metric_embedding` | vector(1024) | 指标名称向量（用于语义检索） |
+| `synonym_embedding` | vector(1024) | 指标同义词向量（用于语义检索） |
 
-**NL2SQL 作用**：`retrieve_metrics_node` 节点从中检索指标定义、聚合规则
+**NL2SQL 作用**：`metrics_retrieval_node` 节点从中检索指标定义、聚合规则
+**混合检索**：LIKE 匹配 metric_synonyms/metric_name + 向量检索 metric_embedding/synonym_embedding
 
 #### lake_table_metadata（湖表业务元数据）
 | 字段 | 类型 | 说明 |
@@ -240,8 +259,11 @@ nl2sql-langgraph/
 | `date_granularity` | VARCHAR(20) | 时间颗粒度 |
 | `examples` | JSONB | 示例值列表 |
 | `llm_description` | TEXT | LLM 生成的描述 |
+| `topic_embedding` | vector(1024) | 主题向量（用于语义检索） |
+| `metric_embedding` | vector(1024) | 指标名称向量（用于语义检索） |
 
-**NL2SQL 作用**：`retrieve_metadata_node` 节点从中检索指标对应的表名、字段名、JOIN 关系
+**NL2SQL 作用**：`metadata_retrieval_node` 节点从中检索指标对应的表名、字段名、JOIN 关系
+**混合检索**：LIKE 匹配 topic/metric_name + 向量检索 topic_embedding/metric_embedding
 
 ---
 
@@ -272,23 +294,27 @@ nl2sql-langgraph/
 ### 各表在 LangGraph 流程中的作用
 
 ```
-问题分析 → [并行检索] → 合并 → 元数据分析 → SQL生成 → SQL执行
-              ↓
-    ┌─────────┼─────────┐
-    ↓         ↓         ↓
-enterprise_kb  metrics_catalog  lake_table_metadata
-    └─────────┼─────────┘
-              ↓
-        上下文合并 → 选择表/JOIN → 生成SQL → 执行(fact_orders)
+问题分析 → 向量生成 → [并行混合检索] → 合并 → 元数据分析 → SQL生成 → SQL执行
+                           ↓
+         ┌─────────────────┼─────────────────┐
+         ↓                 ↓                 ↓
+   知识检索(混合)     指标检索(混合)     元数据检索(混合)
+         │                 │                 │
+         ├─ LIKE匹配       ├─ LIKE匹配       ├─ LIKE匹配
+         ├─ 向量检索       ├─ 向量检索       ├─ 向量检索
+         └─ RRF融合        └─ RRF融合        └─ RRF融合
+         └─────────────────┼─────────────────┘
+                           ↓
+               上下文合并 → 选择表/JOIN → 生成SQL → 执行(fact_orders)
 ```
 
-| 表 | 检索节点 | 提供的上下文 |
-|----|----------|-------------|
-| `enterprise_kb` | `retrieve_knowledge_node` | 业务术语解释、同义词映射、示例 SQL 模板 |
-| `metrics_catalog` | `retrieve_metrics_node` | 指标定义、聚合规则（如何计算）、目标列 |
-| `lake_table_metadata` | `retrieve_metadata_node` | 指标对应的表名、字段名、JOIN 关系 |
-| `fact_orders` | SQL 执行节点 | 实际业务数据，验证生成的 SQL |
-| `field_metadata` | Schema 学习服务 | 字段语义描述、分类、示例值 |
+| 表 | 检索节点 | 混合检索路径 | 提供的上下文 |
+|----|----------|-------------|-------------|
+| `enterprise_kb` | `knowledge_retrieval_node` | LIKE + keyword_embedding/business_embedding | 业务术语解释、同义词映射、示例 SQL 模板 |
+| `metrics_catalog` | `metrics_retrieval_node` | LIKE + metric_embedding/synonym_embedding | 指标定义、聚合规则（如何计算）、目标列 |
+| `lake_table_metadata` | `metadata_retrieval_node` | LIKE + topic_embedding/metric_embedding | 指标对应的表名、字段名、JOIN 关系 |
+| `fact_orders` | SQL 执行节点 | - | 实际业务数据，验证生成的 SQL |
+| `field_metadata` | Schema 学习服务 | - | 字段语义描述、分类、示例值 |
 
 ---
 
@@ -315,19 +341,32 @@ python scripts/db_meta.py columns <表名>
 ## 关键设计决策
 
 ### 1. 双数据库架构
-- **PostgreSQL**：存储业务数据（知识库、指标、事实表）
+- **PostgreSQL**：存储业务数据（知识库、指标、事实表）+ pgvector 向量检索
 - **MySQL**：存储平台数据（会话、历史）
-- **原因**：业务数据需要复杂的 JSON 查询能力，平台数据需要简单可靠的关系存储
+- **原因**：业务数据需要复杂的 JSON 查询能力和向量检索，平台数据需要简单可靠的关系存储
 
 ### 2. 梭子形流水线
-- 分析节点提取关键词后，三个检索节点并行执行
+- 分析节点提取关键词后，embedding_generation_node 生成向量
+- 三个检索节点并行执行混合检索（LIKE + 向量）
 - 合并节点汇总检索结果后，生成并执行 SQL
-- **原因**：并行检索提升响应速度
+- **原因**：并行检索提升响应速度，混合检索提升召回质量
 
-### 3. Mock + LLM 双模式
+### 3. 混合检索 + RRF 融合
+- **LIKE 检索**：精确关键词匹配，覆盖已知术语
+- **向量检索**：语义相似度匹配，覆盖同义表述
+- **RRF 融合**：多路结果融合排序，公式 `RRF_score = Σ 1/(k + rank_i)`
+- **原因**：单一检索有盲区，混合检索互补提升召回率
+
+### 4. Mock + LLM 双模式
 - Mock 模式：基于规则，快速响应，适合开发和测试
 - LLM 模式：基于 AI，理解自然语言，适合生产环境
 - **原因**：降低开发门槛，同时保留生产环境能力
+
+### 5. Embedding 服务设计
+- **提供商**：通义千问 DashScope（兼容 OpenAI 协议）
+- **模型**：text-embedding-v3（1024 维）
+- **降级策略**：QWEN_API_KEY 未配置时退化为纯 LIKE 检索
+- **原因**：国内访问稳定，OpenAI SDK 兼容，降级保证可用性
 
 ---
 
@@ -343,6 +382,21 @@ python scripts/db_meta.py columns <表名>
 ## 开发环境配置
 
 ### Python 虚拟环境
-- **路径**：`D:\01_AlCoding_Test\langgraph_agent_venv`（与项目目录齐平）
-- **启动后端**：`cd d:/01_AlCoding_Test/nl2sql-langgraph && D:/01_AlCoding_Test/langgraph_agent_venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000`
+- **路径**：`D:\01_AlCoding_Test\nl2sql-langgraph\venv`（项目根目录）
+- **启动后端**：`cd d:/01_AlCoding_Test/nl2sql-langgraph && venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000`
 - **注意**：必须从项目根目录启动，确保 `.env` 文件路径正确解析
+
+### Embedding 初始化
+- **初始化向量字段**：`psql $POSTGRES_DSN -f db/vector_schema.sql`
+- **生成 Embedding 数据**：`venv/Scripts/python.exe scripts/init_embeddings.py`
+- **仅统计数量**：`venv/Scripts/python.exe scripts/init_embeddings.py --dry-run`
+- **强制重新生成**：`venv/Scripts/python.exe scripts/init_embeddings.py --force`
+- **指定表处理**：`venv/Scripts/python.exe scripts/init_embeddings.py --tables enterprise_kb,metrics_catalog`
+
+### 环境变量（Embedding 相关）
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `QWEN_API_KEY` | 通义千问 API Key（必填） | - |
+| `QWEN_API_BASE` | API 地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `QWEN_EMBEDDING_MODEL` | 模型名称 | `text-embedding-v3` |
+| `QWEN_EMBEDDING_DIM` | 向量维度 | `1024` |

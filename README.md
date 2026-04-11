@@ -1,6 +1,6 @@
 # nl2sql-langgraph
 
-基于 **LangGraph** 的「梭子形多 Agent 协作」NL2SQL 系统，支持自然语言转 SQL 查询、流式执行、会话管理、历史记录。
+基于 **LangGraph** 的「梭子形混合检索」NL2SQL 系统，支持自然语言转 SQL 查询、流式执行、会话管理、历史记录。
 
 ## 架构概览
 
@@ -71,44 +71,62 @@
                                   └──────────────────────────────────────┘
 ```
 
-### LangGraph 执行流程（梭子形）
+### 梭子形流水线执行流程（混合检索）
 
 ```
-                    ┌─────────────────┐
-                    │   问题分析       │
-                    │ analyze_question │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-        ┌──────────┐  ┌──────────┐  ┌──────────┐
-        │ 知识检索  │  │ 指标检索  │  │ 元数据检索 │
-        │knowledge │  │ metrics  │  │ metadata │
-        │retrieval │  │retrieval │  │retrieval │
-        └────┬─────┘  └────┬─────┘  └────┬─────┘
-              │              │              │
-              └──────────────┼──────────────┘
-                             ▼
-                    ┌─────────────────┐
-                    │   上下文合并     │
-                    │  merge_context  │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │   元数据分析     │
-                    │metadata_analysis│
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │    SQL生成      │
-                    │  sql_generation │
-                    └────────┬────────┘
-                             │
-                    ┌────────▼────────┐
-                    │    SQL执行      │
-                    │  sql_execution  │
-                    └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     梭子形混合检索流水线                                      │
+│                     (LIKE + Vector + RRF Fusion)                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    问题 → analyze_question → embedding_generation → [并行混合检索] → merge → SQL生成 → 执行
+                                                         │
+                 ┌───────────────────────────────────────┼───────────────────────────┐
+                 │                                       │                           │
+                 ▼                                       ▼                           ▼
+         hybrid_knowledge_search                hybrid_metrics_search      hybrid_metadata_search
+                 │                                       │                           │
+                 ├─ LIKE: keyword_synonyms              ├─ LIKE: metric_name       ├─ LIKE: topic
+                 │       business_meaning               │       metric_synonyms    │       metric_name
+                 ├─ Vector: keyword_embedding           ├─ Vector: metric_emb      ├─ Vector: topic_emb
+                 │        business_embedding            │        synonym_emb       │        metric_emb
+                 └─ RRF Fusion                          └─ RRF Fusion              └─ RRF Fusion
+                 │                                       │                           │
+                 └───────────────────────────────────────┼───────────────────────────┘
+                                                         │
+                                                         ▼
+                                              merge_context_node
+                                                         │
+                                                         ▼
+                                              metadata_analysis
+                                                         │
+                                                         ▼
+                                              sql_generation → sql_execution
 ```
+
+**混合检索核心机制（RRF 融合）：**
+
+| 概念 | 说明 |
+|------|------|
+| **RRF 公式** | `RRF_score(d) = Σ 1/(k + rank_i(d))`，k=60 |
+| **LIKE 检索** | SQL `LIKE ANY (%keyword%)` 精确匹配 |
+| **向量检索** | pgvector 余弦距离 `<=> query_vector` |
+| **融合结果** | 多路排名融合，互补提升召回率 |
+
+**检索结果字段：**
+
+| 字段 | 说明 |
+|------|------|
+| `rrf_score` | RRF 融合分数（越高越相关） |
+| `like_rank` | LIKE 检索排名（null=未命中） |
+| `vector_rank` | 向量检索排名（null=未命中） |
+| `cosine_similarity` | 余弦相似度（1 - cosine_distance） |
+| `_retrieval_method` | 检索来源：`hybrid`/`like_only`/`vector_only` |
+
+**前端可视化：**
+- 检索步骤显示「混合检索已激活」徽章
+- 每条结果展示 `_retrieval_method` 标记（蓝/黄/绿）
+- 显示 `rrf_score` 融合分数
 
 ### 会话与问答对关系
 
@@ -215,6 +233,28 @@ cd frontend && npm run dev
 | `OPENAI_MODEL` | 模型名称 | `gpt-4o-mini` |
 | `SQL_MAX_ROWS` | 返回最大行数 | `200` |
 | `SQL_MAX_ATTEMPTS` | SQL 重试次数 | `2` |
+| `QWEN_API_KEY` | 通义千问 API Key（用于 Embedding） | - |
+| `QWEN_API_BASE` | 通义千问 API 地址 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `QWEN_EMBEDDING_MODEL` | Embedding 模型名称 | `text-embedding-v3` |
+| `QWEN_EMBEDDING_DIM` | Embedding 向量维度 | `1024` |
+
+**Embedding 配置说明：**
+
+| 配置项 | 说明 |
+|--------|------|
+| `QWEN_API_KEY` | 必填才能启用混合检索；未配置时退化为纯 LIKE 检索 |
+| `text-embedding-v3` | 通义千问最新 Embedding 模型，支持 1024 维向量 |
+| 1024 维 | 与 pgvector 索引配置一致，不支持动态调整 |
+
+**初始化向量数据：**
+
+```powershell
+# 初始化 pgvector 向量字段
+psql $env:POSTGRES_DSN -f .\db\vector_schema.sql
+
+# 生成 Embedding 数据（需要 QWEN_API_KEY）
+python scripts/init_embeddings.py
+```
 
 ## 项目结构
 
@@ -336,18 +376,28 @@ SSE 流式接口，实时返回执行进度。
 
 ## 数据库表
 
-### PostgreSQL（业务数据）
+### PostgreSQL（业务数据 + 向量检索）
 
-| 表名 | 说明 |
-|------|------|
-| `enterprise_kb` | 企业知识库/术语表 |
-| `metrics_catalog` | 指标口径目录 |
-| `lake_table_metadata` | 湖表业务元数据 |
-| `fact_orders` | 订单事实表 |
-| `dim_customer` | 客户维度表 |
-| `dim_product` | 产品维度表 |
-| `dim_region` | 地区维度表 |
-| `dim_channel` | 渠道维度表 |
+| 表名 | 说明 | 向量字段 |
+|------|------|---------|
+| `enterprise_kb` | 企业知识库/术语表 | `keyword_embedding`, `business_embedding` |
+| `metrics_catalog` | 指标口径目录 | `metric_embedding`, `synonym_embedding` |
+| `lake_table_metadata` | 湖表业务元数据 | `topic_embedding`, `metric_embedding` |
+| `fact_orders` | 订单事实表 | - |
+| `dim_customer` | 客户维度表 | - |
+| `dim_product` | 产品维度表 | - |
+| `dim_region` | 地区维度表 | - |
+| `dim_channel` | 渠道维度表 | - |
+
+**pgvector 索引配置：**
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| 索引类型 | HNSW | 高性能近似检索 |
+| 距离度量 | `vector_cosine_ops` | 余弦距离 |
+| 向量维度 | 1024 | 与 Qwen Embedding 一致 |
+| `m` | 16 | HNSW 连接数 |
+| `ef_construction` | 64 | 构建时搜索宽度 |
 
 ### MySQL（平台数据）
 

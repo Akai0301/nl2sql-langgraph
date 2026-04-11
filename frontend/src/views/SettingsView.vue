@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-container h-full flex">
+  <div class="settings-container h-full w-full flex">
     <!-- 设置侧边栏 -->
     <div class="settings-sidebar bg-white border-r">
       <div class="p-4 border-b">

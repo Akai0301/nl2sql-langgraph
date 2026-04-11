@@ -5,7 +5,9 @@
 
     <!-- 主内容区 -->
     <div class="main-content flex-1 flex overflow-hidden">
-      <router-view />
+      <div class="flex-1 w-full">
+        <router-view />
+      </div>
     </div>
   </div>
 </template>
